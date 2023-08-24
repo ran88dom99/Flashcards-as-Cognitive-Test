@@ -1,0 +1,707 @@
+---
+title: "Step_1_Collection"
+author: "DG"
+date: "July 6, 2023"
+output:
+  html_document:
+    code_folding: hide
+editor_options: 
+  markdown: 
+    wrap: 70
+---
+
+## SECTION 1 LOAD DATA, BUGS, DATA VALIDATION AND CLEANING
+
+A lot of the debugging is necessary because I added decks in weird
+ways, Anki is being constantly developed, and I use many addons.
+
+Load Anki's sqlite database and turn it into several R tables.
+
+```{r Load Ankis SQlite DB}
+options(max.print=200) 
+
+require(DBI)
+#CHANGEME
+COLLECTION_PATH <- "collection.anki2"
+connection <- dbConnect(RSQLite::SQLite(), dbname=COLLECTION_PATH)
+rev <- dbGetQuery(connection,'SELECT * FROM revlog')
+
+#?dbGetQuery
+each.table <- dbListTables(connection)
+al<-list(each.table)
+for (i in each.table) {
+  try({
+  eh<-dbGetQuery(connection,(paste0('SELECT * FROM ',i)))
+  al[[which(each.table==i)]]<-NA
+  names(al)[[which(each.table==i)]] <- i
+  al[[which(each.table==i)]]<-eh
+  })
+} 
+names(al)
+dbDisconnect(connection)
+print("following tables did not load properly")
+print(each.table[!(each.table %in%  names(al))])
+note<-al$notes
+cards<-al$cards
+dek<-al$decks
+#names(dek)
+#head(dek$id)
+```
+
+Basic history plots and info. Help user see if there is anything very
+wrong.
+
+```{r plot simple use history}
+ milli_to_date <- function(mili) as.Date((mili)/(24*60*60*1000), origin = "1970-01-01")
+reviews.per.card <- sort(table(rev$cid),decreasing = T)
+hist(reviews.per.card,breaks = 60)
+cards.reviewed.each.month <- milli_to_date(rev$id)
+hist(cards.reviewed.each.month,breaks = 60)
+
+
+print("reviews")
+print(length(rev$cid))
+print("cards reviewed at least once")
+print(length(unique(rev$cid)))
+print(paste("when was last review:",milli_to_date(max(rev$id,na.rm=T)))) 
+```
+
+Card and note ids are universal based on ankiweb (?) and so are not
+useful here. "The number of new cards you have added" in anki's stats
+window is in my case, broken because of some problem with nid (note)
+and cid (card). It says I added cards 12 years ago! Plenty of possible
+causes here but its many decks that affected it.
+
+In this notebook I use DID (deck). There is also a review id which is
+called id in review data frame.
+
+```{r note and card ids are not useful}
+require(tidyverse)
+#this part may better belong in 'merge all' block
+names(note)[1] <- "nid"
+names(note)[names(note)=="flds"] <- "card.txt"
+names(cards)[1] <- "cid"
+names(dek)[1] <- "did"
+names(dek)[2] <- "dek.nam" 
+
+hist(milli_to_date(cards$cid),100)
+hist(milli_to_date(note$nid),100)
+```
+
+merge all useful info into a single sheet aka frame and bug checks
+
+```{r merge all data into single structure}
+print(paste("percent card's note id in note's ids:",
+            round(sum(cards$nid %in% note$nid)/length(cards$nid),3)))
+print(paste("percent note's note id in card's ids:",
+            round(sum(note$nid %in% cards$nid)/length(note$nid),3)))
+cards<-merge(cards,note[,c("nid","card.txt")],all.x = T,all.y=F)
+print(paste("percent card's deck id in deck's ids :",
+            round(sum(cards$did %in% dek$did)/length(cards$did),3)))
+print(paste("percent deck's deck id in card's ids :",
+            round(sum(dek$did %in% cards$did)/length(dek$did),3)))
+print("umm decks without cards?? deleted decks?")
+crd<-merge(cards,dek[,1:2],all.x = T,all.y=F)
+
+#names(crd)
+print(paste("percent review's card id in card's ids :",
+            round(sum(rev$cid %in% cards$cid)/length(rev$cid),3)))
+print("this is probably percent 1 - percent of cards deleted")
+print(paste("percent cards's card id in review's ids :",
+            round(sum(cards$cid %in% rev$cid)/length(cards$cid),3)))
+print("this is just percent of cards ever reviewed and not a bug")
+rev2<-merge(rev,crd,all.x = T,all.y=F,by="cid")
+
+stopifnot(
+  dim(crd)[1]==dim(cards)[1],
+  dim(rev)[1]==dim(rev2)[1])
+
+rev<-rev2
+rm(rev2);
+```
+
+Note to self: some cards are removed later because of terrible deck
+id.
+
+Convert out of int64 because R usualy uses 'numeric'.
+
+```{r convert revs ids out of int64}
+rev <- rev[order(rev$id),]
+least_rev_id <- min(rev$id)
+rev$idn <- as.numeric(rev$id)
+print(paste("converted ids same as unconverted:",all(rev$id == rev$idn)))
+
+print(paste("conversion to numeric unsuccesfull:",sum((rev$id - rev$idn) != 0)))
+print(paste("when was last review:",milli_to_date(max(rev$idn,na.rm=T)))) 
+
+rev$id  <- as.numeric(rev$id) 
+
+rev$idn <- NULL
+rev$cid <- as.numeric(rev$cid)
+rev$did <- as.numeric(rev$did)
+rev$nid <- as.numeric(rev$nid)
+#summary(rev)
+#str(rev)
+```
+
+```{r remove useless columns}
+
+#summary(rev)
+to.delet <- c(
+"odid",
+"usn",
+"usn.x",
+"usn.y",
+"ivl.y",
+"factor.y",
+"type.y")
+
+for(i in to.delet){#i="odid"
+  rev[,i] <- NULL
+} 
+#IVL factor and type
+```
+
+```{r remove rows with nas}
+#require(naniar)
+require(visdat)
+
+rorm <- apply(rev,1,function(x) any(is.na(x)))
+print(paste("number of rows with na which will be removed",sum(rorm)))
+vis_miss(rev[rorm,], cluster = TRUE)
+rev <- rev[!rorm,]
+print("this is likely because of missing ids")
+```
+
+In my case these were almost certainly reviews of deleted cards.
+
+
+Doing this here just to have nicer output in a few other chunks.
+```{r clean card text and deck name}
+text_count <- length(unique(rev$card.txt))
+deck_count <- length(unique(rev$dek.nam))
+
+require(stringr)
+clean_strings <- function(ws,remove.digits=T){
+ws <- gsub(pattern = '\037'," -- ",ws,fixed = T)
+ws <- gsub(pattern = '<img src='," AN_IMAGE_HERE<  ",ws,fixed = T)
+ws <- gsub(pattern = '<.+?>'," ",ws,fixed = F)
+ws <- gsub(pattern = '\\[.+?\\]'," ",ws,fixed = F)
+ws <- gsub(pattern = '{{c'," ",ws,fixed = T)
+ws <- gsub(pattern = '::',":",ws,fixed = T)
+ws <- gsub(pattern = '}}'," ",ws,fixed = T)
+if(remove.digits){
+  ws <- gsub(pattern = '[[:digit:]][[:digit:]][[:digit:]]+'," % ",ws,fixed = F)
+}
+ws <- gsub(pattern = 'nbsp'," ",ws,fixed = T)
+ws <- gsub(pattern = '/n'," ",ws,fixed = T)
+ws <- str_squish(ws)
+} 
+
+rev$dek.nam.old<-rev$dek.nam
+rev$dek.nam<-sapply(rev$dek.nam,clean_strings,remove.digits=F)
+rev$card.txt<-sapply(rev$card.txt,clean_strings,remove.digits=T)
+
+print("count of card text and deck names made identical by string cleaning")
+print(text_count - length(unique(rev$card.txt)))
+print(deck_count - length(unique(rev$dek.nam)))
+```
+
+Will get into this in more detail in step three notebook, which is all
+about strings.
+
+CHANGEME Code here only fixes deck-ids, not any other timestamps.
+
+```{r fix non timestamp ids}
+print(paste("IDs too low to be timestamps. in order rev, card, note, deck"))
+print(sum(rev$id<10000))
+print(sum(rev$cid<10000))
+print(sum(rev$nid<10000))
+print(sum(rev$did<10000))
+
+if(any(rev$did<100)){
+  print(paste("name of weird decks the Id of which is not timestamp",unique(rev$dek.nam[rev$did<10])))
+  print(paste("number of reviews in weird decks",sum(rev$did<10)))
+  print(paste("first,last rev in those decks",
+              milli_to_date(rev$id[rev$did<10][1]),
+              milli_to_date(rev$id[rev$did<10][sum(rev$did<10)])))
+  if(sum(rev$did<10) < dim(rev)[1]*.005){
+  print("looks not too bad in this case so it will be deleted")
+  #print(unique(rev$card.txt[rev$did==1]))
+  rev<-rev[rev$did>10,]
+  crd<-crd[crd$did>10,]
+  }
+  else{
+    print("too many reviews so deck id stamp will be set near to median")
+    while(any(rev$did<1000)){
+    medek<-median(sort(as.numeric(cards$did)))
+    print(unique(rev$dek.nam[rev$did==medek]))
+    while((medek %in% rev$did) || 
+          (medek %in% rev$id) || 
+          (medek %in% rev$cid)) medek<-medek+1
+    rev$did[min(rev$did)]<-medek
+    }
+  }
+}
+```
+
+```{r check test}
+rev <- rev[order(rev$id),]
+# print('all id are the timestamp in miliseconds of objects creation or occurence')
+ print(paste("when was last review:",milli_to_date(max(rev$id,na.rm=T)))) 
+ print(paste("which rev ids na:",which(is.na(rev$id))))
+ print(paste("which rev ids are duplicated:",which(duplicated(rev$id))))
+ print(paste("any timings reverse order or lags become zero:",which(diff(rev$id)<=0)))
+# print("no more NAs and no more int64s either")
+#summary(rev)
+#str(rev)
+```
+
+TODO here continue cleanup
+
+```{r duplicate card text}
+print("following regards card table")
+print(paste("count of unique card text",length(unique(crd$card.txt))))
+print(paste("count of unique note ids",length(unique(crd$nid))))
+print(paste("count of unique card ids",length(unique(crd$cid))))
+print(paste("dimensions of card object",paste(dim(crd),collapse = " ")))
+ 
+#crd <- crd[order(crd$nid),]
+#crd$ohno <- duplicated(crd$card.txt) + duplicated(crd$card.txt, fromLast = TRUE)
+#print(crd[crd$ohno>0,])
+
+rev<-rev[order(rev$card.txt),]
+list.of.rev<-rev %>% 
+  group_by(card.txt) %>%
+   summarise(dif.nid=n_distinct(nid),deck=first(dek.nam)) %>%
+  filter(dif.nid>1) 
+if(dim(list.of.rev)[1]>0){
+print("Duplicate Card Text")
+print(list.of.rev) 
+}
+ 
+list.of.rev.idd<-rev %>% 
+  group_by(nid) %>%
+   summarise(dif.nid=n_distinct(card.txt),deck=first(dek.nam)) %>%
+  filter(dif.nid>1)  
+if(dim(list.of.rev.idd)[1]>0){
+print("Multiple IDs per cardtext")
+print(list.of.rev.idd) 
+}
+
+if(F){
+# crd<-crd[order(crd$card.txt),]
+# list.of.crd<-crd %>% 
+#   group_by(card.txt) %>%
+#    summarise(dif.nid=n_distinct(nid)) %>%
+#   filter(dif.nid>1)
+# 
+# 
+# print(crd[(crd$card.tx %in% list.of.crd$card.txt),])
+# 
+# slight.error<-rev[rev$card.txt %in% list.of.rev$card.txt,]
+# slight.error$nid<-slight.error$nid-least_rev_id
+# slight.error$cid<-slight.error$cid-least_rev_id
+# slight.error$did<-slight.error$did-least_rev_id
+# slight.error
+print("save space by reducing timestamp size")
+}
+```
+
+## SECTION 2 TIMESTAMP MISSALIGNMENT
+
+```{r disorder in timestamps of card-deck-review }
+# print(paste("number reviews with card created after review somehow",sum(rev$cid>rev$id)))
+# print(paste("number reviews with deck created after card somehow",sum(rev$did>(rev$cid-10))))
+rev$time.missalign=rev$did>rev$id
+print(paste("number reviews with deck created after review somehow",sum(rev$time.missalign)))
+
+print(paste("total revs left:",dim(rev)[1]))
+
+hist(milli_to_date(rev$id),100)
+#hist(milli_to_date(rev$did),100)
+#hist(milli_to_date(rev$cid),100)
+hist(milli_to_date(crd$did),100)
+```
+
+```{r fix review timestamps}
+
+revie.deck.mis <- rev %>%  
+  group_by(card.txt) %>%
+   summarise(deck.name = first(dek.nam),
+             revs.before.deck = sum(did>id),
+             revstotal=n(),
+             first.rview = first(id),
+             deck.date = first(did)) %>%
+  group_by(deck.name) %>%
+   summarise(cardstotal=n(),
+            cards.ever.before.deck = sum(revs.before.deck > 1), 
+            revs.total = sum(revstotal), 
+            revs.before.deck= sum(revs.before.deck),
+             first.review=milli_to_date(first(first.rview)),
+             deck.date=milli_to_date(first(deck.date))) %>%
+  mutate(percent.new=revs.before.deck / revs.total) %>%
+    filter(revs.before.deck>0)
+dim(revie.deck.mis)
+print(revie.deck.mis)
+#View(revie.deck.mis)
+```
+
+```{r reviews and cards per deck}
+rev <- rev %>%
+  group_by(dek.nam) %>%
+   mutate(cards.in.dek=n_distinct(cid),
+             revs.in.dek=n())%>%
+  arrange(id)%>%
+  ungroup()
+```
+
+In my database some of these problems were caused by upgrading Anki.
+They should be fixed by changing the timestamp. Also some of the decks
+were installed in a weird way and kept the previous user's history.
+These reviews will be deleted. One case was probably caused by editing
+a card and should be ignored. TODO : dont just remove the misaligned
+reviews, actualy fix them.
+
+I will remove reviews made before the deck timestamp and reviews made
+before a certain date.
+
+CHANGEME Other people change the Ts to Fs or in reverse here. Also you
+can remove decks by altering the following to a string common to their
+names "programming advanced wide". And you should definately look into
+changeing " first_time_used_anki "
+
+```{r find and remove problem reviews and decks}
+#I have to remove some decks because issues
+if(F){
+library(stringr)
+rev<-rev[!str_detect(rev$dek.nam,
+              stringr::fixed("ProgramingAdvancedWide")),]
+rev<-rev[!str_detect(rev$dek.nam,
+              stringr::fixed("Paper Recursive Feedback")),]
+rev %>%
+  arrange(id) %>%
+  group_by(dek.nam) %>%
+  arrange(id) %>%
+   summarise(cards.in.dek=n_distinct(cid),
+             revs.in.dek=n())%>%
+  arrange(desc(cards.in.dek))
+}
+#remove reviews before a certain time
+if(T){
+  first_time_used_anki<-1.560563e+12
+  to_fix <- rev$id<first_time_used_anki
+  print(paste("number reviews before date to be deleted", milli_to_date(first_time_used_anki), sum(to_fix)))
+  print(as.data.frame(table(rev[to_fix,]$dek.nam)))
+rev <- rev[!to_fix,] 
+}
+#remove reviews before their decks
+if(T){
+  rev$time.missalign=rev$did>rev$id
+print(paste("number reviews with deck created after review to be deleted", sum(rev$time.missalign)))
+print(as.data.frame(table(rev[rev$time.missalign,]$dek.nam)))
+  rev <- rev[!rev$time.missalign,]
+}
+#move deck id to better a point in time 
+if(T){
+  deks_to_fix<-unique(rev[rev$did<first_time_used_anki,]$dek.nam)
+  print(deks_to_fix)
+  subtract_seconds<-0
+  for(i in deks_to_fix){
+    subtract_seconds<-subtract_seconds+1000
+    rev[rev$dek.nam==i,]$did <- first_time_used_anki-subtract_seconds
+  }
+}
+
+```
+
+```{r}
+hist(milli_to_date(rev$did),50)
+hist(milli_to_date(rev$id),50)
+
+```
+
+some plots of the deck
+
+```{r check after crit clean}
+cards.reviewed.each.month <- milli_to_date(rev$id)
+hist(cards.reviewed.each.month, breaks = 60)
+decks.added <- milli_to_date(rev$did)
+hist(decks.added, breaks = 60)
+revie.deck.mis <- rev %>%  
+  group_by(card.txt) %>%
+   summarise(deck.name = first(dek.nam),
+             revs.before.deck = sum(did>id),
+             revstotal = n(),
+             first.rview = first(id),
+             deck.date = first(did)) %>%
+  group_by(deck.name) %>%
+   summarise(cardstotal=n(),
+            cards.ever.before.deck = sum(revs.before.deck > 1), 
+            revs.total = sum(revstotal), 
+            revs.before.deck= sum(revs.before.deck),
+             first.review=milli_to_date(first(first.rview)),
+             deck.date=milli_to_date(first(deck.date))) %>%
+  mutate(percent.new=revs.before.deck / revs.total) 
+dim(revie.deck.mis)
+print(revie.deck.mis[order(revie.deck.mis$first.review),])
+
+rev <- rev[order(rev$id),]
+ 
+print(paste("when was last review:",milli_to_date(max(rev$id,na.rm=T)))) 
+print(paste("which rev ids na:",which(is.na(rev$id))))
+print(paste("which rev ids are duplicated:",which(duplicated(rev$id))))
+ 
+#summary(rev)
+#str(rev)
+```
+
+card and note ids are universal-ankiweb and do not matter as
+timestamps.
+
+I should slice collection and especially percent reviewed by deck in
+future versions. maybe sunburst or tree to describe deck structure?
+... animate over time events of great addition?
+
+## SECTION 3 COLLECTION STRUCTURE AND USE
+
+following are the collection graphs
+
+```{r accumulation of cards in time}
+# cards$created_date <- as.yearmon(anydate(as.numeric(cards$cid)/1000))
+# cards_summary <- sqldf("select created_date, count(*) as n_cards from cards group by created_date order by created_date")
+
+
+#also do by deck or eck proportions
+
+print(paste("percent cards actualy ever tried",
+round(digits=3,sum(as.numeric(crd$nid) %in% rev$nid)/length(as.numeric(crd$nid)))))
+print("looks like I have been making too many plans")
+
+hist(milli_to_date(crd$did),100)
+
+rev$first.rev.of.a.note<-(!duplicated(rev$nid))
+
+rev <- rev[order(rev$id),]
+reved<-rev %>%
+  group_by(nid) %>%
+  summarise(min=min(id)) %>%
+  arrange(min) %>% ungroup()
+sum(reved$nid>=reved$min)
+reved<-reved %>% arrange(min)
+crd<-crd[order(crd$did,decreasing=F),]
+
+length(reved$min)
+
+length(rev$id[rev$first.rev.of.a.note])
+
+nts_fg<-crd$did[!duplicated(crd$nid)]
+nts_gd<-crd$did[!duplicated(crd$nid) & as.numeric(crd$nid) %in% rev$nid]
+ggplot()+
+  geom_histogram(aes(x=milli_to_date(rev$id),color=!rev$first.rev.of.a.note),binwidth = 60)+
+  geom_point(aes(x=milli_to_date(nts_fg),cumsum(rep(1,times=length(nts_fg))),
+                 color="cum notes in collection"))+
+  geom_point(aes(x=milli_to_date(nts_gd),cumsum(rep(1,times=length(nts_gd))),
+                 color="cn in coll, actualy used"))+
+  geom_point(aes(x=milli_to_date(rev$id[rev$first.rev.of.a.note]),
+                 cumsum(rep(1,times=length(rev$id[rev$first.rev.of.a.note]))),
+                 color="cum notes seen"))+
+  xlab("Date") + ylab("Histogram is of reviews of old and new cards")+ 
+  ggtitle( "Points as cumulative sum of notes")+
+  scale_x_date(date_breaks="6 months")+ 
+  theme( axis.text.x = element_text(angle=30) )+
+  labs(colour = " ")
+```
+
+The TRUE is reviews of cards already reviewed and FALSE is reviews of
+new notes. A two sided note will make 2 cards like hand -\> mano and
+mano -\> hand.
+
+```{r count cards in deck; simple deck name; add var to rev}
+require(stringr)
+crd$dek.nam<-sapply(crd$dek.nam,clean_strings,remove.digits=F)
+crd$simplest.name <- apply(crd, 1, function(x){
+  levs<-str_split(x[names(x)=="dek.nam"],stringr::fixed("--"))[[1]]
+  return(levs[length(levs)])
+} )
+
+
+rev$simplest.name <- apply(rev, 1, function(x){
+  levs<-str_split(x[names(x)=="dek.nam"],stringr::fixed("--"))[[1]]
+  return(levs[length(levs)])
+} )
+
+opp <- crd %>%  
+  group_by(simplest.name) %>% 
+  summarise(Cards_in_deck = n()) 
+
+stopifnot("final names of decks in reviews not in deck data.frame" = all(rev$simplest.name %in% opp$simplest.name))
+
+any.odd.changes <- dim(rev) 
+
+rev <- merge(rev,opp,all.x = T,all.y=F , by ="simplest.name")
+
+stopifnot("number rows changed after merge" = dim(rev)[1]==any.odd.changes[1],
+  "number columns changed after merge" = (dim(rev)[2])==(any.odd.changes[2]+1))
+```
+
+```{r decks by card count and usage}
+#require(treemapify)
+require(treemap)
+require(grDevices)
+ 
+opp <- crd %>%  
+  group_by(simplest.name) %>% 
+  summarise(
+            Cards_in_deck = n(), 
+            did = first(did),
+            seen.once = sum(as.numeric(cid) %in% rev$cid)
+  ) %>%
+  mutate(
+    percent_reviewed = (seen.once / Cards_in_deck),
+    Sqrt.cards.in.deck = sqrt(Cards_in_deck)
+  )
+
+#dim(opp)
+#summary(opp)
+
+treemap(opp, index="simplest.name", vSize="Cards_in_deck", vColor="percent_reviewed", type="manual", palette="RdYlBu")
+ # itreemap(opp)
+  
+```
+
+```{r decks finished or nearly}
+opp %>% 
+  filter(percent_reviewed > .9) %>% 
+  arrange(-Cards_in_deck)
+```
+
+I should really finish adding decks before finishing the ones I
+already added!
+
+```{r separate tree}
+require(stringr)
+dek_name_to_heir <- function(var.to.split){
+split_str <- str_split(var.to.split,stringr::fixed("--"))
+pre_padded_df <- sapply(split_str, simplify="matrix",function(x){
+  for(i in 1:(20-length(x))) x<-c(x,"")
+return(x)
+}) 
+dek_heir_padded <- as.data.frame(t(pre_padded_df))
+levels_not_empty <- (apply(dek_heir_padded, 2, 
+                           function(x) length(unique(x)))!=1)
+dek_heir_padded <- dek_heir_padded[,levels_not_empty]
+max_lv <<- dim(dek_heir_padded)[2]
+for(i in (max_lv):1) names(dek_heir_padded)[i] <- paste0("dek.heir.lev.",i)
+return(dek_heir_padded)
+}
+
+print(dek_heir_unfurled <- dek_name_to_heir(rev$dek.nam))
+rev <- cbind(rev,dek_heir_unfurled)
+
+print('deck names repeat if any of these are not "" and character(0)')
+for(itr in 1:(max_lv-1)){
+  for(i in (max_lv-itr):1){
+    wish <- (unique(rev[,paste0("dek.heir.lev.",i)]) %in% unique(rev[,paste0("dek.heir.lev.",i+itr)]))
+  #print(wish)
+    print( unique(rev[,paste0("dek.heir.lev.",i)])[wish])
+  }}
+
+
+if(F){
+  for(i in (max_lv):1)  rev <- rev[order(rev[,paste0("dek.heir.lev.",i)]),]
+rev %>% group_by(dek.nam) %>%
+  select("dek.nam","cards.in.dek",
+         "revs.in.dek" ) %>%
+  summarise(last(dek.nam),
+            last(cards.in.dek),
+         last(revs.in.dek)) %>% ungroup()
+  
+  rev %>% group_by(dek.heir.lev.2) %>%
+  summarise(n()) %>% ungroup()
+}
+
+
+hier.low.lev <- rev %>% group_by(dek.heir.lev.1) %>%
+  summarise(n()) %>% ungroup()
+print(hier.low.lev)
+plot((sort(hier.low.lev$`n()`)))
+
+print("highest level of deck heirarchy will be used as the [deck] from now on and those sections with less than 1k reviews will be bundled into [Other] deck")
+to.other <- hier.low.lev$dek.heir.lev.1[(hier.low.lev$`n()`<1000)]
+rev$dek.agglo <- rev$dek.heir.lev.1
+rev$dek.agglo[rev$dek.agglo %in% to.other] <- "Other"
+ 
+```
+
+```{r deck folder heirarchy}
+require(ggraph)
+require(tidygraph)
+dx <- c("dek.heir.lev.1"  ,   
+ "dek.heir.lev.2"   ,   "dek.heir.lev.3" ,    
+ "dek.heir.lev.4"   ,   "dek.heir.lev.5" ,    "dek.heir.lev.6")
+revgrp <- rev[,c(dx)]
+names(rev)
+revgrp <- revgrp[!duplicated(revgrp),]
+lvone <- unique(revgrp[,(1)])
+edges <- data.frame(from=rep("root",length(lvone)),to=lvone)
+edges <- data.frame(from=c(),to=c())
+for(i in 2:dim(revgrp)[2]){ #i<-2
+  hold <- data.frame(from= revgrp[,(i-1)], to= revgrp[,(i)])
+  edges <- rbind(edges,hold)
+}
+names(edges)
+edges <- edges[edges$to!="",]
+nodes <- data.frame(node_key =unique(unlist(edges)))
+g <- tbl_graph(edges=edges, directed=TRUE, nodes=nodes)
+yout <- create_layout(g, layout = 'igraph', algorithm = 'fr' )
+ggraph(g,layout=yout) + 
+  geom_edge_link(alpha=.2) + 
+  geom_node_point(size=2,color="red") +
+  geom_node_text(aes(label = node_key),
+                 repel=T,size=2)#angle=10,
+
+#require(reactable)
+#?reactable
+```
+
+```{r any folders with cards instead of decks?}
+#um find every unique full deck name then check if it is part of any others and then that full deck name will be one with 
+require(stringr)
+require(dplyr)
+
+dek.evey <- sort(unique(crd$dek.nam))
+logh <- str_split(dek.evey,stringr::fixed("--"))
+
+nonlastset<-c()
+for(i in 1:4){
+huh<-lapply(logh,function(x){ #x<-logh[[6]]
+  (try(silent = T,{x <- x[1:(length(x)-i)]
+  return(
+    paste(x,collapse = "--")
+  )
+  }))
+  return("")
+})
+nonlastset<-unique(c(nonlastset,unlist(huh)))
+}
+crd$notendfolder <- crd$dek.nam %in% nonlastset
+crd %>% filter(notendfolder) %>% group_by(dek.nam) %>% summarise(count= n())
+ 
+```
+
+```{r delete remove objects for cleanliness}
+saveRDS(rev,"rev.RDS")
+saveRDS(crd,"crd.RDS")
+if(F){
+stop()
+rm(cards)
+rm(note)
+rm(crd)
+rm(dek)
+
+rm(list=unlist(setdiff(ls(),c("rev","crd"))))
+}
+gc()
+
+```
