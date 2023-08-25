@@ -12,7 +12,7 @@ debugging and minutia.
 CHANGEME \<- If you run this notebook on your own data search for this
 tag to find things you may need to change.
 
-All the code was written for one specific database with its own idiosyncrasies. Please help fix this by submitting errors to github along with your data as in step 2. 
+All the code was written for one specific database with its own idiosyncrasies. Please help me fix this by submitting errors on github along with your data as in step 2. Some methods require lots of data, like 50k reviews and 5k cards, and this may not be avoidable.   
 
 1. Running these notebooks at home on your own data. 
 
