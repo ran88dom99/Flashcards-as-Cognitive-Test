@@ -28,7 +28,9 @@ DATA LIKE THE CONTENTS OF NOTES AND CARDS WILL BECOME AVAILABLE TO AND IN THIS N
 
 Piotr Wozniaks work on Spacing and Repetion supermemo.guru/wiki/SuperMemo_Guru
 
-Gwern tries something similar in gwern.net/treadmill#treadmill-effect-on-spaced-repetition-performance-randomized-experiment but without as much feature engineering. 
+Gwern tries something similar in gwern.net/treadmill#treadmill-effect-on-spaced-repetition-performance-randomized-experiment but without nearly as much feature engineering. 
+
+github.com/open-spaced-repetition/fsrs4anki is similar to this project but goals and philosophy differ enough. This project illustrates everything in detail for its secondary goals, infers/test from scratch for personalization and really the main goal is cognitive health.
 
 Learned how to get Anki's db and some ideas on what to do with the data from Ojisan Seiuchi
 www.ojisanseiuchi.com/2017/12/17/Peering-into-Anki-using-R/
@@ -52,4 +54,4 @@ occasionaly.
 Also Anki Simulator and True Retention addons which I should review.
 
 Mnemosny, an app similar to anki, has a database of user's reviews
-which used to be available for the public but mnemosnye itself is not very popular.
+which used to be available for the public.
