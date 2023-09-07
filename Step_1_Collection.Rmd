@@ -16,13 +16,13 @@ editor_options:
 }
 </style>
 
- TODO clean rev strings? I mean is there any desperate need?
+
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## SECTION 1 LOAD DATA, BUGS, DATA VALIDATION AND CLEANING
+## SECTION 1 LOAD DATA, CLEAN DATA
 
 A lot of the debugging is necessary because I added decks in weird
 ways, Anki is being constantly developed, and I use many addons.
@@ -62,8 +62,7 @@ dek<-al$decks
 #head(dek$id)
 ```
 
-Basic history plots and info. Help user see if there is anything very
-wrong.
+Basic history plots and info. Maybe reveal bug.
 
 ```{r plot simple use history}
  milli_to_date <- function(mili) as.Date((mili)/(24*60*60*1000), origin = "1970-01-01")
@@ -78,17 +77,16 @@ print(length(rev$cid))
 print("cards reviewed at least once")
 print(length(unique(rev$cid)))
 print(paste("when was last review:",milli_to_date(max(rev$id,na.rm=T)))) 
+print(paste("when was first review:",milli_to_date(min(rev$id,na.rm=T))))
 }
 ```
 
-All id are the timestamp in miliseconds of objects creation or occurence. Card and note ids are universal based on ankiweb (? i never synced) and so are not useful here. At least they are very similar. Card is the 'side' of a note like one specific empty spot in a cloze deletion phrase. 
-"The number of new cards you have added" in anki's stats window, is in my case broken because of some problem with nid (note) and cid (card). Some are from as far back as 12 years ago. Plenty of possible causes here but many of my decks are affected by this problem. This is good because cid is purely join key and not meaningful variable. However there is also some redundany in columns.
-
-In this notebook I use DID (deck). There is also a review id which is
-called id in review data frame.
+All id are the timestamp in miliseconds of objects creation or occurence. Card and note ids are universal based on ankiweb (? i never synced) and so are not meaningful variables. This is good because cid can now be used as purely join key. The two timestamps are very similar. Card is the 'side' of a note, ex. one specific empty spot in a cloze deletion phrase. "The number of new cards you have added" in anki's stats window, uses nid or cid. According to it, I started my collection 12 years ago, which is not even close to true. For determining when something was added to collection I will use DID (deck). When card was reviewed is called id in rev data frame.
 
 ```{r load tidyverse silently, include=FALSE}
 require(tidyverse, quietly = T)
+require(ggraph, quietly = T)
+require(tidygraph, quietly = T)
 ```
 
 ```{r note and card ids are not useful}
@@ -107,7 +105,7 @@ hist(milli_to_date(note$nid),100)
 
 
 
-Merge all useful info into a single sheet aka frame. Bug checks bellow. 
+Merge all useful info into a single object (sheet). Bug checks too. 
 
 ```{r merge most data into single structure}
 {
@@ -129,6 +127,7 @@ print(paste("percent review's card id in card's ids :",
 print("this is probably percent 1 - percent of cards deleted")
 print(paste("percent cards's card id in review's ids :",
             round(sum(cards$cid %in% rev$cid)/length(cards$cid),3)))
+print(paste("caluclated by ",round(sum(cards$cid %in% rev$cid),3)," / ", round(length(cards$cid),3)))
 print("this is just percent of cards ever reviewed and not a bug")
 rev2<-merge(rev,crd,all.x = T,all.y=F,by="cid")
 }
@@ -140,9 +139,10 @@ rev<-rev2
 rm(rev2);
 #Note to self: some cards are removed later because of terrible deck id.
 ```
+Anki's own statistics say cards unseen are .244 percent or (56832 - 42990) 13842 / 56832 . It counts notes not cards. See Section 3.
 
 
-Convert out of int64 because R usualy uses 'numeric'.
+Convert out of int64 because R works more reliably with 'numeric'.
 
 ```{r convert revs ids out of int64}
 rev <- rev[order(rev$id),]
@@ -166,7 +166,7 @@ rev$nid <- as.numeric(rev$nid)
 
 
 ```
-Later on reps will differ from reviews because many reviews will have been deleted for error correction. Right now deck names mean bug.
+Later on reps column in crd will not agree with reviews because many reviews will have been deleted for error correction. If u see any deck names just bellow, that means reviews and reps already disagree which is a bug.
 ```{r what is reps really}
 crd$in_rev <- as.numeric(crd$cid) %in% rev$cid
 if( !all((crd$reps>0) == crd$in_rev)){
@@ -198,7 +198,7 @@ for(i in to.delet){#i="odid"
 } 
 #IVL factor and type
 ```
-Remove rows with nas
+Remove rows with nas. 
 In my case these were almost certainly reviews of deleted cards.
 ```{r remove rows with nas}
 {
@@ -208,7 +208,7 @@ require(visdat, quietly = T)
 rowrm <- apply(rev,1,function(x) any(is.na(x)))
 
 print(paste("number of rows with na which will be removed",sum(rowrm)))
-print("this is likely because of missing ids")
+print("this is likely because of missing ids during join")
 
 print(vis_miss(rev[rowrm,], cluster = TRUE))
 rev <- rev[!rowrm,]
@@ -216,7 +216,7 @@ rev <- rev[!rowrm,]
 ```
 
 
-find duplicate card text and card ids from Reviews table. Up to user to do something about it.
+Find duplicate card text and card ids from Reviews. Up to user to do something about it. Anki has duplicates finder but its for power users.
 ```{r duplicate card text}
 
 #crd <- crd[order(crd$nid),]
@@ -246,27 +246,24 @@ print(unique(c(list.of.rev.idd$deck,list.of.rev.idd$deck2)))
 print((list.of.rev.idd[,c(1)]) )
 }
 
-if(F){
-# crd<-crd[order(crd$card.txt),]
-# list.of.crd<-crd %>% 
-#   group_by(card.txt) %>%
-#    summarise(dif.nid=n_distinct(nid)) %>%
-#   filter(dif.nid>1)
-# 
-# 
-# print(crd[(crd$card.tx %in% list.of.crd$card.txt),])
-# 
-# slight.error<-rev[rev$card.txt %in% list.of.rev$card.txt,]
-# slight.error$nid<-slight.error$nid-least_rev_id
-# slight.error$cid<-slight.error$cid-least_rev_id
-# slight.error$did<-slight.error$did-least_rev_id
-# slight.error
-print("save space by reducing timestamp size") #CRAZY
-}
+
 ```
 
+Duplicates in entire collection.
+```{r more duplicate cards}
+dup <- crd %>% 
+  group_by(card.txt) %>%
+  summarise(c.count=length(unique(nid)),
+            deck=last(dek.nam)) %>%
+  filter((c.count)>1)
+  
+# to.pretty <- sort(table(dup$deck),decreasing=T)
+# as.data.frame(list(dek=names(to.pretty),count=to.pretty))
+as_tibble(as.data.frame(sort(table(dup$deck),decreasing=T)))
+dup[,c(1)]
+```
 
-quick check
+Quick check.
 ```{r check test}
 rev <- rev[order(rev$id),]
 {
@@ -280,16 +277,18 @@ rev <- rev[order(rev$id),]
 #str(rev)
 }
 ```
-quick check of card table
+Quick check of card table.
 ```{r quick check of card table}
 {
 print("following regards card data table")
 print(paste("count of unique card text",length(unique(crd$card.txt))))
 print(paste("count of unique note ids",length(unique(crd$nid))))
+print("difference between the above two values is number of duplicate cards")
 print(paste("count of unique card ids",length(unique(crd$cid))))
 print(paste("dimensions of card object",paste(dim(crd),collapse = " ")))
 }
 ```
+
 
 
 
@@ -305,8 +304,8 @@ rev <- rev %>%
   ungroup()
 ```
 
-Fix ids that are way too low to be timestamps.
-CHANGEME Code here only fixes deck-ids. If output bellow is not "rev 0 card 0 note 0" popst to github.
+Fix ids that are way too early to be timestamps.
+CHANGEME Code here only fixes deck-ids. If output bellow is not "rev 0 card 0 note 0" post to github.
 
 ```{r fix non timestamp ids}
 print(paste0("count of IDs too low to be timestamps. rev ", sum(rev$id<10000)," card ", sum(rev$cid<10000), " note ",sum(rev$nid<10000), " deck ", sum(rev$did<10000)))
@@ -353,18 +352,12 @@ if(sum(rev$time.missalign)>0) print(paste("number reviews with deck created afte
 
 ```
 
-In my database some of these problems were caused by upgrading Anki.
-They should be fixed by changing the timestamp. Also some of the decks
-were installed in a weird way and kept the previous user's history.
-These reviews will be deleted. One case was probably caused by editing
-a card and should be ignored. TODO : don't just remove the misaligned
-reviews, actualy fix them. But that may mess with other things so I will leave it for later. OK TODO this is a big one. I was trying to remove mainly reviews of decks that I never actualy reviewed. They had several errors. THis may easily be unique to my collection.
+In my database most reviews before deck creation were caused by an Anki upgrade changed them. TODO (likely problematic) They should be fixed by undoing the change but currently just deleted. Also some of the decks were installed in a weird way and kept the makers review history. These reviews will be deleted. One case was probably caused by editing a card and should be ignored. Could moving cards between decks cause this problem too?
 
+Following code removes reviews made before the deck timestamp and reviews made
+before a certain date. Deck ids will be increased.
 
-I will remove reviews made before the deck timestamp and reviews made
-before a certain date.
-
-CHANGEME You may want to change which of the 4 removal methods by altering the Ts and Fs. Remove specific decks. Remove reviews before a certain time set in 'first_time_used_anki'. Remove reviews before their deck's timestamp. Could moving cards between decks cause this problem? Change deck id to after anki is used first time. 
+CHANGEME U may want to change which of the 4 removal methods activate by altering the Ts and Fs. Remove specific decks. Remove reviews before their deck's timestamp. Remove reviews before a certain time set in 'first_time_used_anki'. Change deck id to after anki is used first time. 
 
 ```{r find and remove problem reviews and decks}
 {
@@ -392,7 +385,7 @@ if(T){
   rev$time.missalign=rev$did>rev$id
   print(" ")
 print(paste("number reviews with deck created after review to be deleted", sum(rev$time.missalign)))
-print(as.data.frame(table(rev[rev$time.missalign,]$dek.nam)))
+print(as_tibble(as.data.frame(table(rev[rev$time.missalign,]$dek.nam))))
   rev <- rev[!rev$time.missalign,]
 }
 #remove reviews before a certain time
@@ -400,7 +393,7 @@ if(T){
   first_time_used_anki <- 1.548563e+12
   to_fix <- rev$id<first_time_used_anki
   print(paste("number reviews before ",milli_to_date(first_time_used_anki)," to be deleted ",  sum(to_fix)))
-  print(as.data.frame(table(rev[to_fix,]$dek.nam)))
+  print(as_tibble(as.data.frame(table(rev[to_fix,]$dek.nam))))
 rev <- rev[!to_fix,] 
 }
 
@@ -469,8 +462,7 @@ print(revie.deck.mis[order(revie.deck.mis$first.review),])
 
 
 ## SECTION 3 COLLECTION STRUCTURE AND ACCUMULATION
-
-Graphs of card collection accumulation.
+ 
 
 ```{r new plot of cards each month}
 {
@@ -479,7 +471,11 @@ hist(reviews.after.clean, breaks = 60)
 # cards$created_date <- as.yearmon(anydate(as.numeric(cards$cid)/1000))
 # cards_summary <- sqldf("select created_date, count(*) as n_cards from cards group by created_date order by created_date")
 percent_unseen <- round(digits=3,sum(as.numeric(crd$nid) %in% rev$nid)/length(as.numeric(crd$nid)))
-print(paste("percent cards actualy ever tried",percent_unseen
+print(paste("percent notes actualy ever tried",percent_unseen
+))
+print(paste("calculated as ",
+            sum(as.numeric(crd$nid) %in% rev$nid),
+                                 '/',length(as.numeric(crd$nid))
 ))
 if(percent_unseen<.5) print("looks like user has been making too many plans")
 
@@ -554,8 +550,8 @@ ggplot(data=qdf)+
 
 
 
-Cleaning text function.  Will get into text cleaning in more detail in step three notebook, which is all about strings.
-```{r clean card text and deck name}
+Cleaning text function.   Clean deck names as well as card text.
+```{r clean deck names}
 require(stringr, quietly = T)
 clean_strings <- function(ws,remove.digits=T){
 ws <- gsub(pattern = '\037'," -- ",ws,fixed = T)
@@ -574,21 +570,43 @@ ws <- str_squish(ws)
 } 
 
 if(T){
-#text_count <- length(unique(rev$card.txt))
-deck_count <- length(unique(rev$dek.nam))
-deck_count_crd <- length(unique(crd$dek.nam))
+ 
+deck_count <- (unique(rev$dek.nam))
+deck_count_crd <- (unique(crd$dek.nam))
 
 crd$dek.nam.old <- crd$dek.nam
 crd$dek.nam <- sapply(crd$dek.nam,clean_strings,remove.digits=F)
 
 rev$dek.nam.old <- rev$dek.nam
 rev$dek.nam <- sapply(rev$dek.nam,clean_strings,remove.digits=F)
-#rev$card.txt <- sapply(rev$card.txt,clean_strings,remove.digits=T)
-deck.names.redun <- deck_count - length(unique(rev$dek.nam))
+ 
+deck.names.redun <- length(deck_count) - length(unique(rev$dek.nam))
 print(paste0("count of deck names ",deck.names.redun," made identical by string cleaning in rev"))
-deck.names.redun.crd <- deck_count_crd - length(unique(crd$dek.nam))
+deck.names.redun.crd <- length(deck_count_crd) - length(unique(crd$dek.nam))
 print(paste0("count of deck names ",deck.names.redun.crd ," made identical by string cleaning in crd"))
-#print(paste0("count of card text ",text_count - length(unique(rev$card.txt))," and deck names ",deck_count - length(unique(rev$dek.nam))," made identical by string cleaning"))
+ 
+if(deck.names.redun.crd>0) {
+  print("this is a problem; please edit the names of the following decks")
+  crd %>% 
+    group_by(dek.nam) %>%
+    summarize(length(unique(did)))
+}
+}
+
+if(T){ 
+card_count <- length(unique(rev$card.txt))
+card_count_crd <- length(unique(crd$card.txt))
+
+crd$card.txt.old <- crd$card.txt
+crd$card.txt <- sapply(crd$card.txt,clean_strings,remove.digits=F)
+
+rev$card.txt.old <- rev$card.txt
+rev$card.txt <- sapply(rev$card.txt,clean_strings,remove.digits=F) 
+deck.names.redun <- card_count - length(unique(rev$card.txt))
+print(paste0("count of card.txt ",deck.names.redun," made identical by string cleaning in rev"))
+deck.names.redun.crd <- card_count_crd - length(unique(crd$card.txt))
+print(paste0("count of card txt ",deck.names.redun.crd ," made identical by string cleaning in crd"))
+ 
 }
 ```
 
@@ -651,7 +669,8 @@ treemap(opp, index="simplest.name", vSize="Cards_in_deck", vColor="percent_revie
 TODO animate over time events of great addition? 
 TODO interactive sunburst? Or does anki with addons do this better?
 
-Separate folder path into each folder name. 
+Separate folder path into each folder name. First rev then crd. Check if one folder name appears in another hierarchy level. Up to user to fix.
+
 ```{r separate tree}
 dek_name_to_heir <- function(var.to.split){
 split_str <- str_split(var.to.split,stringr::fixed("--"))
@@ -676,43 +695,27 @@ for(itr in 1:(max_lv-1)){#itr<-1
     wish <- (unique(rev[,paste0("dek.heir.lev.",i)]) %in%                 unique(rev[,paste0("dek.heir.lev.",i+itr)]))
   #print(wish)
     itsy<-unique(rev[,paste0("dek.heir.lev.",i)])[wish]
-    if(length(itsy)>0) if(nchar(itsy)>0) print(paste("bug ",itsy))
+    if(length(itsy)>0) if(any(nchar(itsy)>0)) print(paste("duplicate deck names ",itsy))
   }}
 
+dek_heir_unfurled <- dek_name_to_heir(crd$dek.nam)
+#print(dek_heir_unfurled)
+crd <- cbind(crd,dek_heir_unfurled)
+
+for(itr in 1:(max_lv-1)){#itr<-1
+  for(i in (max_lv-itr):1){#i<-1
+    wish <- (unique(crd[,paste0("dek.heir.lev.",i)]) %in%                 unique(crd[,paste0("dek.heir.lev.",i+itr)]))
+  #print(wish)
+    itsy<-unique(crd[,paste0("dek.heir.lev.",i)])[wish]
+    if(length(itsy)>0) if(any(nchar(itsy)>0)) print(paste("duplicate deck names ",itsy))
+  }}
 
 ```
-```{r minor posssible scraps about deck heirarchy}
-if(F){ #broke stats by each deck level deck
-  for(i in (max_lv):1)  
-    rev <- rev[order(rev[,paste0("dek.heir.lev.",i)]),]
-rev %>% group_by(dek.nam) %>%
-  select("dek.nam","cards.in.dek",
-         "revs.in.dek" ) %>%
-  summarise(last(dek.nam),
-            last(cards.in.dek),
-         last(revs.in.dek)) %>% ungroup()
-  
-  rev %>% group_by(dek.heir.lev.2) %>%
-  summarise(n()) %>% ungroup()
-}
-if(F){ #makes agglo variable
-hier.low.lev <- rev %>% group_by(dek.heir.lev.1) %>%
-  summarise(n()) %>% ungroup()
-print(hier.low.lev)
-print("summary of number of cards per deck lowest deck")
-summary(hier.low.lev$`n()`)
 
-to.other <- hier.low.lev$dek.heir.lev.1[(hier.low.lev$`n()`<1000)]
-rev$dek.agglo <- rev$dek.heir.lev.1
-rev$dek.agglo[rev$dek.agglo %in% to.other] <- "Other"
-}
-```
 
-Plot deck folder hierarchy
+
 ```{r deck folder heirarchy}
 {
-require(ggraph, quietly = T)
-require(tidygraph, quietly = T)
 dx <- c("dek.heir.lev.1"  ,   
  "dek.heir.lev.2"   ,   "dek.heir.lev.3" ,    
  "dek.heir.lev.4"   ,   "dek.heir.lev.5" ,    "dek.heir.lev.6")
@@ -741,7 +744,11 @@ ggraph(g,layout=yout) +
 #?reactable
 }
 ```
-Folders with cards as well as decks. Maybe make the bellow mentioned decks not hold both cards and decks by removing the decks? (if move cards may cause problems!)
+
+Plot of deck folder hierarchy above. 
+
+
+Folders with cards as well as decks. Maybe make the bellow mentioned decks not hold both cards and decks by moving the decks? (if move cards may cause problems!)
 ```{r any folders with cards as well as decks?}
 #um find every unique full deck name then check if it is part of any others and then that full deck name will be one with 
 
@@ -767,7 +774,7 @@ crd %>% filter(notendfolder) %>% group_by(dek.nam) %>% summarise(count= n())
 ```
  
 
-Check crd and rev redundancies are identical. 
+Check that duplicate columns in crd and rev have not diverged. 
 ```{r check crd and rev redundancies are identical}
 {
 cols <- names(crd)[names(crd) %in% names(rev)]
@@ -795,15 +802,15 @@ comparedf(crd_compare,tocompare)
 }
 ```
 
+Remove most objects from memory and save the rest into files.
 ```{r delete remove objects for cleanliness}
 saveRDS(rev,"rev.RDS")
 saveRDS(crd,"crd.RDS")
-if(F){
-stop()
-rm(cards)
-rm(note)
-rm(crd)
-rm(dek)
+if(T){
+#rm(cards)
+#rm(note)
+#rm(crd)
+#rm(dek)
 
 rm(list=unlist(setdiff(ls(),c("rev","crd"))))
 }
