@@ -16,7 +16,7 @@ editor_options:
 }
 </style>
 
-
+This step is mostly debugging and will not be interesting to anyone who is not analyzing their own data. Please notice the amount of code needed to remove all the bugs in Anki's database and look at the pretty latter plots. If you are running this on your own data you should check the output of each and every code section carefully. 
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -164,6 +164,9 @@ rev$nid <- as.numeric(rev$nid)
 #summary(rev)
 #str(rev)
 
+crd$cid <- as.numeric(crd$cid)
+crd$did <- as.numeric(crd$did)
+crd$nid <- as.numeric(crd$nid)
 
 ```
 Later on reps column in crd will not agree with reviews because many reviews will have been deleted for error correction. If u see any deck names just bellow, that means reviews and reps already disagree which is a bug.
@@ -303,54 +306,129 @@ rev <- rev %>%
   arrange(id)%>%
   ungroup()
 ```
-
-Fix ids that are way too early to be timestamps.
-CHANGEME Code here only fixes deck-ids. If output bellow is not "rev 0 card 0 note 0" post to github.
+Set to about median ids that are way too early to be timestamps.
 
 ```{r fix non timestamp ids}
-print(paste0("count of IDs too low to be timestamps. rev ", sum(rev$id<10000)," card ", sum(rev$cid<10000), " note ",sum(rev$nid<10000), " deck ", sum(rev$did<10000)))
+print(paste0("count of IDs too low to be timestamps in reveiws. rev ", sum(rev$id<10000)," card ", sum(rev$cid<10000), " note ",sum(rev$nid<10000), " deck ", sum(rev$did<10000)))
+
+print(paste0("count of IDs too low to be timestamps in crd. card ", sum(crd$cid<10000), " note ",sum(crd$nid<10000), " deck ", sum(crd$did<10000)))
+
+if(sum(rev$id<10000) > 1) warning("rev id timestamps that are too low removed later")
 
 
-if(any(rev$did<100)){
+if(any(crd$did<10000)){
   print(("names of weird decks the Id of which is not timestamp"))
-  print((unique(rev$dek.nam[rev$did<10])))
-  print(paste("number of reviews in weird decks",sum(rev$did<10)))
+  print((unique(crd$dek.nam[crd$did<10000])))
+  print(paste("number of reviews in weird decks",sum(rev$did<10000)))
   print(paste("first,last rev in those decks",
-              milli_to_date(rev$id[rev$did<10][1]),
-              milli_to_date(rev$id[rev$did<10][sum(rev$did<10)])))
-  if(sum(rev$did<10) < dim(rev)[1]*.005){
+              milli_to_date(rev$id[rev$did<10000][1]),
+              milli_to_date(rev$id[rev$did<10000][sum(rev$did<10000)])))
+  if(F)#sum(rev$did<10000) < dim(rev)[1]*.005)
+    {
   print("looks not too bad in this case so deck will be deleted")
   #print(unique(rev$card.txt[rev$did==1]))
-  rev<-rev[rev$did>10,]
-  crd<-crd[crd$did>10,]
+  rev<-rev[rev$did>10000,]
+  crd<-crd[crd$did>10000,]
   }
   else{
-    print("too many reviews so deck id stamp will be set near to median")
-    warning("code untested")
-    while(any(rev$did<1000)){
-    medek<-median(sort(as.numeric(cards$did)))
-    print(unique(rev$dek.nam[rev$did==medek]))
-    while((medek %in% rev$did) || 
+    print("deck id stamp will be set near to median")
+    medek <- median(sort(as.numeric(crd$did))) - 300000000
+    while(any(crd$did<10000)){
+    while((medek %in% crd$did) ||
+          (medek %in% crd$nid) ||
           (medek %in% rev$id) || 
-          (medek %in% rev$cid)) medek<-medek+1
-    rev$did[min(rev$did)]<-medek
-    crd$did[min(rev$did)]<-medek
+          (medek %in% crd$cid)) {
+      medek<-medek-1
+    }
+    rev$did[rev$did==min(crd$did)]<-medek
+    crd$did[crd$did==min(crd$did)]<-medek
     }
   }
 }
+
 ```
-```{r disorder in timestamps of card-deck-review }
+
+
+```{r fix non timestamp ids continued}
+if(any(crd$nid<10000)){
+  print(("names of weird decks the nId of which is not timestamp"))
+  print((unique(crd$dek.nam[crd$nid<10000])))
+  print(paste("number of reviews of weird notes",sum(rev$nid<10000)))
+  print(paste("first,last rev of those notes",
+              milli_to_date(rev$id[rev$nid<10000][1]),
+              milli_to_date(rev$id[rev$nid<10000][sum(rev$nid<10000)])))
+  if(F)#sum(rev$nid<10000) < dim(rev)[1]*.005)
+    {
+  print("looks not too bad in this case so notes will be deleted")
+  #print(unique(rev$card.txt[rev$nid==1]))
+  rev<-rev[rev$nid>10000,]
+  crd<-crd[crd$nid>10000,]
+  }
+  else{
+    print("note id stamp will be set near to median")
+    medek <- median(sort(as.numeric(crd$nid)))
+    while(any(crd$nid<10000)){
+    while((medek %in% crd$did) ||
+          (medek %in% crd$nid) ||
+          (medek %in% rev$id) || 
+          (medek %in% crd$cid)) {
+      medek<-medek+1
+    }
+    rev$nid[rev$nid==min(crd$nid)]<-medek
+    crd$nid[crd$nid==min(crd$nid)]<-medek
+    }
+  }
+}
+
+if(any(crd$cid<10000)){
+  print(("names of weird decks the cid of which is not timestamp"))
+  print((unique(crd$dek.nam[crd$cid<10000])))
+  print(paste("number of reviews of weird cards",sum(rev$cid<10000)))
+  print(paste("first,last rev of those cards",
+              milli_to_date(rev$id[rev$cid<10000][1]),
+              milli_to_date(rev$id[rev$cid<10000][sum(rev$cid<10000)])))
+  if(F)#sum(rev$nid<10000) < dim(rev)[1]*.005)
+    {
+  print("looks not too bad in this case so notes will be deleted")
+  #print(unique(rev$card.txt[rev$nid==1]))
+  rev<-rev[rev$cid>10000,]
+  crd<-crd[crd$cid>10000,]
+  }
+  else{
+    print("card id stamp will be set near to median")
+    medek <- median(sort(as.numeric(crd$cid)))
+    while(any(crd$cid<10000)){
+    while((medek %in% crd$did) ||
+          (medek %in% crd$nid) ||
+          (medek %in% rev$id) || 
+          (medek %in% crd$cid)) {
+      medek<-medek+1
+    }
+    rev$cid[rev$cid==min(crd$cid)]<-medek
+    crd$cid[crd$cid==min(crd$cid)]<-medek
+    }
+  }
+}
+
+
+```
+```{r quickcheck}
 {
+  print(paste0("count of IDs too low to be timestamps in reveiws. rev ", sum(rev$id<10000)," card ", sum(rev$cid<10000), " note ",sum(rev$nid<10000), " deck ", sum(rev$did<10000)))
+
+print(paste0("count of IDs too low to be timestamps in crd. card ", sum(crd$cid<10000), " note ",sum(crd$nid<10000), " deck ", sum(crd$did<10000)))
+
+
 print(paste("total revs left:",dim(rev)[1]))
-if(sum(rev$cid>rev$id)>0) print(paste("number reviews with card created after review somehow CHANGEME",sum(rev$cid>rev$id)))
+if(sum(rev$cid>rev$id)>0) print(paste("number reviews with card created after review somehow ",sum(rev$cid>rev$id)))
 #if(sum(rev$did>(rev$cid))>0) print(paste("number reviews with deck created after card somehow",sum(rev$did>(rev$cid-10))))
 #as established cid is not relevant
   
 rev$time.missalign=rev$did>rev$id
 if(sum(rev$time.missalign)>0) print(paste("number reviews with deck created after review somehow",sum(rev$time.missalign)))
 }
-
 ```
+
 
 In my database most reviews before deck creation were caused by an Anki upgrade changed them. TODO (likely problematic) They should be fixed by undoing the change but currently just deleted. Also some of the decks were installed in a weird way and kept the makers review history. These reviews will be deleted. One case was probably caused by editing a card and should be ignored. Could moving cards between decks cause this problem too?
 
@@ -534,7 +612,7 @@ The TRUE is reviews of cards already reviewed and FALSE is reviews of
 new notes. A two sided note will make 2 cards like hand -\> mano and
 mano -\> hand. Anki already has similar plot.
 
-When were cards added that have ever been reviewed? Good and bad decisions?
+When were cards added that have ever been reviewed? Good and bad decisions? INTERESTING
 ```{r good decisions when adding decks}
 qdf <- data.frame(dion = c(nts_fg, nts_gd),
                   seen=c(rep(F,times=length(nts_fg)),rep(T,times=length(nts_gd))))
@@ -548,6 +626,8 @@ ggplot(data=qdf)+
 
 ```
 
+
+SELF REVIEW  In first 2 months additions were well considered enough but then got obsessed with additions. Somewhere around 2021-10 this stopped and additions became better planned again.
 
 
 Cleaning text function.   Clean deck names as well as card text.
@@ -567,6 +647,8 @@ if(remove.digits){
 ws <- gsub(pattern = 'nbsp'," ",ws,fixed = T)
 ws <- gsub(pattern = '/n'," ",ws,fixed = T)
 ws <- str_squish(ws)
+ws <- str_squish(ws)
+#ws <- str_squish(ws)
 } 
 
 if(T){
@@ -613,13 +695,13 @@ print(paste0("count of card txt ",deck.names.redun.crd ," made identical by stri
 ```{r count cards in deck; simple deck name; add var to rev}
 
 crd$simplest.name <- apply(crd, 1, function(x){
-  levs<-str_split(x[names(x)=="dek.nam"],stringr::fixed("--"))[[1]]
+  levs<-str_split(x[names(x)=="dek.nam"],stringr::fixed(" -- "))[[1]]
   return(levs[length(levs)])
 } )
 
 
 rev$simplest.name <- apply(rev, 1, function(x){
-  levs<-str_split(x[names(x)=="dek.nam"],stringr::fixed("--"))[[1]]
+  levs<-str_split(x[names(x)=="dek.nam"],stringr::fixed(" -- "))[[1]]
   return(levs[length(levs)])
 } )
 
@@ -666,6 +748,7 @@ treemap(opp, index="simplest.name", vSize="Cards_in_deck", vColor="percent_revie
 
 ```
 
+INTERESTING
 TODO animate over time events of great addition? 
 TODO interactive sunburst? Or does anki with addons do this better?
 
@@ -673,7 +756,7 @@ Separate folder path into each folder name. First rev then crd. Check if one fol
 
 ```{r separate tree}
 dek_name_to_heir <- function(var.to.split){
-split_str <- str_split(var.to.split,stringr::fixed("--"))
+split_str <- str_split(var.to.split,stringr::fixed(" -- "))
 pre_padded_df <- sapply(split_str, simplify="matrix",function(x){
   for(i in 1:(20-length(x))) x<-c(x,"")
 return(x)
@@ -702,12 +785,18 @@ dek_heir_unfurled <- dek_name_to_heir(crd$dek.nam)
 #print(dek_heir_unfurled)
 crd <- cbind(crd,dek_heir_unfurled)
 
+
+```
+```{r check for dupli names}
 for(itr in 1:(max_lv-1)){#itr<-1
   for(i in (max_lv-itr):1){#i<-1
     wish <- (unique(crd[,paste0("dek.heir.lev.",i)]) %in%                 unique(crd[,paste0("dek.heir.lev.",i+itr)]))
   #print(wish)
     itsy<-unique(crd[,paste0("dek.heir.lev.",i)])[wish]
-    if(length(itsy)>0) if(any(nchar(itsy)>0)) print(paste("duplicate deck names ",itsy))
+    if(length(itsy)>0) {
+      if(any(nchar(itsy)>0)){
+      print(print(paste("duplicate deck names ",itsy)))
+    }}
   }}
 
 ```
@@ -751,17 +840,15 @@ Plot of deck folder hierarchy above.
 Folders with cards as well as decks. Maybe make the bellow mentioned decks not hold both cards and decks by moving the decks? (if move cards may cause problems!)
 ```{r any folders with cards as well as decks?}
 #um find every unique full deck name then check if it is part of any others and then that full deck name will be one with 
-
-
 dek.evey <- sort(unique(crd$dek.nam))
-logh <- str_split(dek.evey,stringr::fixed("--"))
+logh <- str_split(dek.evey,stringr::fixed(" -- "))
 
 nonlastset<-c()
 for(i in 1:4){
 huh<-lapply(logh,function(x){ #x<-logh[[6]]
   (try(silent = T,{x <- x[1:(length(x)-i)]
   return(
-    paste(x,collapse = "--")
+    paste(x,collapse = " -- ")
   )
   }))
   return("")
@@ -783,9 +870,7 @@ tocompare <- rev[!duplicated(rev$cid),cols]
 tocompare <- tocompare[order(tocompare$cid),]
 crd_compare <- crd[order(crd$cid),cols]
 crd_compare <- crd_compare[as.numeric(crd_compare$cid) %in% tocompare$cid,]
-crd_compare$did <- as.numeric(crd_compare$did )
-crd_compare$cid <- as.numeric(crd_compare$cid )
-crd_compare$nid <- as.numeric(crd_compare$nid )
+
 
 if(nchar(all_equal(crd_compare,tocompare))>10){
   require(arsenal, quietly = T)
@@ -815,5 +900,5 @@ if(T){
 rm(list=unlist(setdiff(ls(),c("rev","crd"))))
 }
 gc()
-
+save.image(file = 'Step_1_after.RData')
 ```
