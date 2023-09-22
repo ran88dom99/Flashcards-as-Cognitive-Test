@@ -19,9 +19,9 @@ editor_options:
 
 DETERMINE SUBJECT OF DECKS BY SIMILAR WORDS
 
-Later notebooks will benefit from using the subject of a deck instead of the deck name or folder heirarchy. At least for big collections. Several things may indicate subject similarity; when the decks were added, when they were reviewed, where in the folder of deck heirarchy did user put each deck and what rare words are in the cards of the deck. The first two are not actualy very useful. Text mining is complicated and user should have an easy way to give input so user's deck hierarchy takes precedence over word coincidence. 
+Later notebooks will benefit from using the subject of a deck instead of the deck name or folder heirarchy. At least for big collections. Several things may indicate subject similarity; when the decks were added, when they were reviewed, where in the folder of deck heirarchy did user put each deck and what rare words are in the cards of the deck. The first two are not actualy very useful. Text mining is complicated and user should have an easy way to give input so user's deck hierarchy. This takes precedence over word coincidence. 
 
-Users not applying this notebook to their own data may be interested in the plots and results inside section '## Studies and visualizations of results'. 
+Users not applying this notebook to their own data may be interested in the plots and results inside section 'Studies and visualizations of results'. 
 
 I imagine many people organize their decks by what they intend to do with the deck rather than by subject matter. Specifically they could have in their collection lowest level deck of 'trashed', 'highest importance', 'learning' and 'maintaining' and plenty of single subject folders. App splits all folders found to contain too much disagreement (multi subject folders), then the decks these split folders held are added to low level single subject folders. LL SS folders with too much in common are combined with other LL SS folders into subjects. During process original folder hierarchy is unaltered and kept separately. 
 
@@ -31,8 +31,11 @@ Notebook was built around big collection. To help the algorithm, User could add 
 
 Running this notebook will make deck_similar_word_network folder contains a html file which shows all decks and strong enough edges (coincidence of words between decks stronger than elbow) at once and is helpful for seeing clusters.
 
- 
 ## Prep and calculations
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
 
 Load relevant files
 ```{r Load relevant files}
@@ -53,7 +56,7 @@ if(!all(as.numeric(rev$cid) %in% as.numeric(crd$cid))){
 require(tidyverse, quietly = T)
 ```
 
-Subject category variable made by assuming lowest level deck is the subject then putting any set less than 100 cards into 'other'. summary of number of cards per deck lowest deck.  Will be superseded by 'Subject'. 
+Approximate subject by assuming lowest level deck is the subject then putting any set less than 100 cards into 'other'. Will be superseded by 'Subject'. Number of cards per deck lowest deck.   
 ```{r Subject category variable via lowest level deck}
 #this is done to CRD in 'finding single subject folders' 
 if(T){ #makes agglo variable
@@ -177,19 +180,19 @@ Toplists of term frequency.
 ```{r term frequency}
 #?CreateDtm
 tf_mat <- TermDocFreq(dtm = dtm)
-
+tf_mat$doc_freq <- NULL
 #str(tf_mat) 
 
 # look at the most frequent tokens, then least frequent small tokens
-head(tf_mat[ order(tf_mat$doc_freq, decreasing = TRUE) , ], 20)
+head(tf_mat[ order(tf_mat$term_freq, decreasing = TRUE) , ], 20)
 tf_smlrams <- tf_mat[ !(stringr::str_detect(tf_mat$term, "_")) , ]
 tf_smlrams <- tf_smlrams[tf_smlrams$term_freq>2,]
-head(tf_smlrams[ order(tf_smlrams$doc_freq, decreasing = FALSE) , ], 10)
+head(tf_smlrams[ order(tf_smlrams$term_freq, decreasing = FALSE) , ], 10)
 
 # look at the most frequent bi-grams, and least frequent too
 tf_bigrams <- tf_mat[ stringr::str_detect(tf_mat$term, "_") , ]
-head(tf_bigrams[ order(tf_bigrams$doc_freq, decreasing = TRUE) , ], 20)
-head(tf_bigrams[ order(tf_bigrams$doc_freq, decreasing = FALSE) , ], 10)
+head(tf_bigrams[ order(tf_bigrams$term_freq, decreasing = TRUE) , ], 20)
+head(tf_bigrams[ order(tf_bigrams$term_freq, decreasing = FALSE) , ], 10)
 
 if(F){
 for(i in 30:40){
@@ -197,7 +200,7 @@ for(i in 30:40){
   print(paste(i,"-----------------------------------"))
 } 
 }
-#plot( sort(tf_mat$doc_freq ))
+#plot( sort(tf_mat$term_freq ))
 
 ```
 
@@ -218,30 +221,35 @@ dtm <- dtm[,!(colnames(dtm) %in% words.remove)]
 #print('though removal is of few words they likely strongly affect the outcome')
 ```
 
-
-
-
-Haberman coincidence distance in standard deviations to approximate document similarity.
+Haberman formula takes in two dichotomous variables, calculates their coincidence, and outputs a similarity distance (or how unlikely that there is no relation between them) in standard deviations. 
+Haberman formula is applied to word incidence to detect the similarity in subject matter between two decks.
 ```{r haberman}
 {
 require(netCoin)
 
 dtm[dtm>1]<-1
-C <- coin(t(dtm)) # [sample.test,] coincidence matrix
+C <- coin(t(dtm), minimum = 1) # [sample.test,] coincidence matrix
 N <- asNodes(C) # node data frame
 N$deklv1 <- str_split(N$name," -- ",simplify = T)[,1]
-E <- edgeList(C,min = -1000,level=-1,criteria = "Haberman") # edge data frame
+E <- edgeList(data=C,min = -1000,level=-1,criteria = "Haberman") # edge data frame
 # Net <- netCoin(N,E,dir="decks")
 # summary(E)
 E <- E[order(-E$Haberman),]
+hold_for_conv_div_clusters <- E
 # E
 # C
 # str(dtm)
 # str(C)
+too_small <- unique(crd$dek.nam)[which(!(unique(crd$dek.nam) %in% E$Target | unique(crd$dek.nam) %in% E$Source))]
+if(length(too_small)>0){
+  print("Following decks were not added to the netCoin network meaning either deck is too small or too esoteric CHANGME")
+print(too_small)
 }
+} 
 ```
 
-Remove from coincidence network those coincidences that were lower than the bend probably indicating a different process.  
+
+Detect 'elbow'. Hopefully indicated different generative process separating those coincidences that were seem high but were created by randomness from those that mean something more.    
 ```{r elbow cut coincidences network}
 elbowr <- function(y=sort(curve),x=1:length(y) ) {
   # hints from
@@ -271,11 +279,9 @@ elbowr <- function(y=sort(curve),x=1:length(y) ) {
   return(df[out,])
 }
 
-
-
 thelbow <- elbowr(sort(E$Haberman))$y
 
-print(paste("elbow is approximately different generative process so decides cuttoff:",round(thelbow,digits = 3)))
+print(paste("elbow / cuttoff:",round(thelbow,digits = 3)))
 plot(y=sort(E$Haberman),x=1:length(E$Haberman))
 
 # length(unique(E$Target))
@@ -287,15 +293,10 @@ E$dist <- ifelse(E$Haberman >= thelbow*.95,.0001,
 
 ```
 
-
-
- Here function that makes clusters from similarity network.
-```{r load reshape2 silently, include=FALSE}
-require(reshape2, quietly = T)
-```
+Function that makes clusters from similarity network.
  
 ```{r cluster function from haberman}
-
+require(reshape2, quietly = T)
 
 #View(E)
 
@@ -349,12 +350,12 @@ edge_dist_clustered <- function(Edges,hclust.method="average",cut.at.height=.01,
     print(paste("elbow selected",cut.at.height))
     }
   
-  cut.singles <- sum(hcs$height > cut.at.height) +1
+  cut.singles <- sum(hcs$height > cut.at.height) +1#count of remaining clusters
   clustering.singles <- cutree(hcs, max(1,cut.singles))
   dek_cluster_second_output <<- data.frame(cluster.number=clustering.singles,
                                            subject.dek=names(clustering.singles))
   tcs <- table(clustering.singles)
-  elms.per.clust <- sum(tcs)/cut.singles
+  elms.per.clust <- sum(tcs)/cut.singles #average objects per cluster
   #print(paste("number of expected clusters", cut.singles))
   if(cut.singles==1) return(tcs)
   
@@ -367,26 +368,65 @@ edge_dist_clustered <- function(Edges,hclust.method="average",cut.at.height=.01,
       print("-------------------------------------------")
       }
     }
-    print(paste("RMSE from even clusters",
-                rmse = sqrt(sum((tcs-elms.per.clust)^2)/cut.singles)))
-    print(paste("RMSE from single cluster",
-                rmseo = sqrt((max(tcs)-sum(tcs))^2 + sum(tcs[(max(tcs)!=tcs)]^2))
-                /cut.singles))
-    print(paste("percent in decimal categorical entropy variance agreement",
-              cat.var = (sum(tcs^2)/cut.singles) / (elms.per.clust)^2))
-    print(paste("percent in decimal outside biggest class",
+    # print(paste("RMSE from even clusters",
+    #             rmse = sqrt(sum((tcs-elms.per.clust)^2)/cut.singles)))
+    # print(paste("RMSE from single cluster",
+    #             rmseo = sqrt((max(tcs)-sum(tcs))^2 + sum(tcs[(max(tcs)!=tcs)]^2))
+    #             /cut.singles))
+    # print(paste("percent in decimal; categorical entropy variance agreement",
+    #           cat.var = (sum(tcs^2)/cut.singles) / (elms.per.clust)^2))
+    print(paste("percent in decimal; objects outside biggest class",
                 p.out = (sum(tcs)-max(tcs))/sum(tcs)))
   }
   
   return(tcs)
 }  
 ```
- 
+
+
+Find clusters of decks that have very very similar subjects, or at least vocabularies. Could be important interesting for understanding collection detecting decks that may as well be duplicates.
+
+```{r subclusters of all decks}
+E$dist <- ifelse(E$Haberman >= thelbow*1,1000-E$Haberman,
+          ifelse(E$Haberman > 2,10000,100000) )
+sink <- edge_dist_clustered(Edges=E,hclust.method="complete",
+                            verby=F,vverby=F,cut.at.height=1001)
+
+dp <- crd %>% 
+group_by(dek.nam) %>%
+  summarize(n=n()) 
+
+dek_subject_clus <- merge(dek_cluster_second_output,dp,by.y = 'dek.nam', by.x = 'subject.dek')
+
+mergagain <- dek_subject_clus %>%
+  arrange(-n)  %>% 
+  group_by(cluster.number) %>% 
+  mutate(subcluster=first(subject.dek)) %>%
+  ungroup() %>%
+  select(subject.dek,subcluster)
+
+metest <- merge(crd, mergagain, by.x = "dek.nam", by.y = "subject.dek",all.x = T)
+
+crd <- metest
+metest <- NULL
+
+crd %>%
+  group_by(subcluster) %>% 
+  mutate(deks.in.sub=n_distinct(dek.nam)) %>% 
+  ungroup() %>%
+  group_by(dek.nam) %>%
+  summarize(deks.in.sub=first(deks.in.sub),subcluster=first(subcluster)) %>%
+  arrange(-deks.in.sub,subcluster) %>%
+  select(deks.in.sub,dek.nam,subcluster)
+  
+```
 
 
 ## Decks rearranged for Subject. User with data should start checking output here 
 
-Deck folders which are not single subject separated into constituents. CHANGME in your own collection. Clusters join together so long as a deck of one cluster has an above elbow Haberman connection to the deck of another cluster. If resulting biggest cluster does not contain 60% or greater of all decks with cards then folder is chopped.
+Words are not the same thing as ideas especially when two very similar ideas do not share many terms. User may want a subject to be less or more broad. Any clustering algorithm will find different clusters depending on decks missing from collection. Therefore subjects must be defined by the user as level one folders with appropriate decks inside. To pick anchors look at deck_similar_word_network. 
+
+Folders which are lowest level but not actualy single subject will be separated into constituents. CHANGEME Modify your own collection to change outcome. Within each LL SS folder, clusters of decks repeatedly join together so long as at least one deck of the first cluster has similar vocabulary to a deck of the second cluster. If in final state the biggest cluster does not contain 60% or greater of all decks with cards then the folder is broken apart. Then folder is deleted and each next level constituent folder or deck become their own ll folder. 
 
 ```{r find highest level folders that are single subject}
 dek_name_to_heir <- function(var.to.split){
@@ -416,6 +456,9 @@ E$folder.one.cluster.s <- E$dek.heir.lev.1.source
 E$folder.one.cluster.t <- E$dek.heir.lev.1.target
 crd$subject.category <- crd$dek.heir.lev.1
 crd$subject.folder.level <- 1
+
+E$dist <- ifelse(E$Haberman >= thelbow*.95,.0001,
+          ifelse(E$Haberman > 2,1,10) )
 
 for(folder.lv in 1:5){ #folder.lv<-1
 folders.highest <- unique(c(E$folder.one.cluster.s,E$folder.one.cluster.t))
@@ -455,13 +498,7 @@ E$folder.one.cluster.t[change.target] <- new.tr
 #unique(crd$subject.category)
 ```
 
-
-Newly detached decks attached to ll ss anchor folders. CHANGEME
-Words are not the same thing as ideas especially when two very similar ideas do not share many terms, user may want a subject to be less or more broad, and any clustering algorithm will find different clusters depending on decks missing from collection. Therefore subjects must be defined by the user as level one folders with appropriate decks inside. To pick anchors look at deck_similar_word_network. 
-
- For every detached deck find subject it has highest median Haberman with and attach to that subject.
- 
- While most decks end up where they are supposed to be, some get attached to seemingly unrelated anchors. 
+Newly detached decks attached to remaining ll ss anchor folders. New anchor folder for each deck is chosen by  median of detached deck's vocab similarity to each deck in anchor folder. When applying this to my collection, most decks end up where they are supposed to be, but some get attached to seemingly unrelated anchors. CHANGEME Again, your own collection.
  
 ```{r reattach detached smaller decks}
 deks.reattach <- unique(crd$subject.category[crd$subject.folder.level > 1])
@@ -490,9 +527,10 @@ print(paste(i," to ",new.name))
 #unique(crd$subject.category)
 ```
 
-Many preceding steps repeated in one block by current subjects.
-```{r new dtm by subject folder}
+Many preceding steps repeated in one block. Documents of dtm here are subjects not decks.  
 
+```{r new dtm by subject folder}
+{
 make_new_dtm_faster <- crd %>%
   group_by(dek.nam) %>%
   summarise(
@@ -514,15 +552,15 @@ dtm2 <- t(deklvl) %*% dtm
 # remove any tokens that are in too few
 dtm2 <- dtm2[ , colSums(dtm2 > 0) > 1 ]
 #again removing words repeated too often though it probably will not matter here
-dtm2<-dtm2[,!(colnames(dtm2) %in% words.remove)]
+dtm2 <- dtm2[,!(colnames(dtm2) %in% words.remove)]
  
 #dim(dtm2)
 #colnames(dtm2)[1:30]
 #rownames(dtm2)[1:30] 
 
 
-dtm2[dtm2>1]<-1
-C <- coin(t(dtm2)) # [sample.test,] coincidence matrix
+dtm2[dtm2 > 1] <- 1
+C <- coin(t(dtm2), minimum = 1) # [sample.test,] coincidence matrix
 N <- asNodes(C) # node data frame
 N$deklv1 <- str_split(N$name," -- ",simplify = T)[,1]
 E <- edgeList(C,min = -1000,level=-1,criteria = "Haberman") # edge data frame
@@ -533,19 +571,20 @@ E <- E[order(-E$Haberman),]
 # hist(E$Haberman)
 
 thelbow <- elbowr(sort(E$Haberman))$y
-print(thelbow)
-summary(sort(tcp$num_chars))
+print(paste('elbow cuttoff between subjects ',thelbow))
+#summary(sort(tcp$num_chars))
 tcp<-tcp[order(tcp$num_chars),]
-tcp$subject.category
+#tcp$subject
 
 #Net <- netCoin(N, E[E$Haberman>thelbow*1,], dir="aftercut_first_step_aglo")
 
 E$dist <- ifelse(E$Haberman>=thelbow*.95,.0001,
           ifelse(E$Haberman>5,1,10))
+}
 ```
 
 
-```{r old method of dtm to subject and verification identical}
+```{r ignore old method of dtm to subject and verification identical}
 #old way is to remake dtm from scratch and time consuming kept here just in case also proof of nearly identical outcome
 
 if(F){
@@ -625,111 +664,105 @@ for(i in dtm2f@Dimnames[[1]]){
 ```
 
 
-Merge some of the ll anchor decks because they have same subject. CHANGEME hclust.method can be changed to 'median' instead of 'single' if user wants fewer merges. 
+Merge some of the ll anchor decks because they have same subject. CHANGEME hclust.method can be changed to "complete", "average" instead of single. See ?hclust. TODO I think there are more appropriate methods but later. Maybe algorithm overenthusiastic. 
 ```{r new subject clusters}
-
-
+#str(crd)
 #E$dist <- (-E$Haberman)
 edge_dist_clustered(E,verby = T,vverby = T,use.elbow.for.height = F,
                     cut.at.height = .1, hclust.method = "single" )
 
 dp <- crd %>% 
 group_by(subject.category) %>%
-  summarize(n_char=sum(nchar(card.txt))) %>%
-  arrange(subject.category)
+  summarize(n_char=sum(nchar(card.txt))) 
 
-dek_cluster_second_output <- dek_cluster_second_output %>%
-  arrange(subject.dek)
-
-dek_subject_clus <- cbind(dek_cluster_second_output,dp)
+dek_subject_clus <- merge(dek_cluster_second_output,dp,by.y = 'subject.category', by.x = 'subject.dek')
 
 mergagain <- dek_subject_clus %>%
-  arrange(-n_char)  %>% 
+  arrange(-n_char) %>% 
   group_by(cluster.number) %>% 
-  summarise(best.name=first(subject.dek))
+  mutate(subject=first(subject.dek)) %>%
+  ungroup() %>%
+  select(subject.dek,subject)
 
-dek_subject_clus <- merge(mergagain, dek_subject_clus, by.x = "cluster.number", by.y = "cluster.number")
+metest <- merge(crd, mergagain, by.x = "subject.category", by.y = "subject.dek",all.x = T)
 
-dek_subject_clus <- dek_subject_clus[,c("best.name","subject.category")]
-
-names(dek_subject_clus) <- c("subject.fin","subject.category")
-
-metest <- merge(crd, dek_subject_clus, by.x = "subject.category", by.y = "subject.category")
 
 if( !all(sort(metest$subject.category) == sort(crd$subject.category))) stop("weird")
+
+metest$subject.guessed<-metest$subject.category
+metest$subject.category<-NULL
 
 crd <- metest
 metest <- NULL
 ```
-```{r chekc that every crd got a subject}
+
+Error and cards per subject.
+
+```{r check that every crd got a subject}
 # check that every crd got a subject
 crd %>% group_by(dek.nam) %>%
-summarize(d=n_distinct(subject.fin)) %>% 
+summarize(d=n_distinct(subject)) %>% 
   filter(d>1)
+
+crd %>% group_by(subject) %>%
+summarize(d=n_distinct(cid))
+  
 ```
 ## Studies and visualizations of results
 
-Words most common to each subject but never anywhere else. Understand the subject and maybe find new vocabulary.
+Words most common to each subject but rarely in other subjects. Understand the subject and maybe make new vocabulary cards.
 ```{r subject bag of words}
 make_new_dtm_faster <- crd %>%
   group_by(dek.nam) %>%
   summarise(
-    subject.fin=first(subject.fin)
+    subject=first(subject)
   )
   
 if(!(dim(dtm)[1] == dim(make_new_dtm_faster)[1])) stop("dtm deck names do not line up in alphabetical order like groupings")
 #str(dtm)
 if(!all(dtm@Dimnames[[1]] == make_new_dtm_faster$dek.nam)) stop("dtm deck names do not line up in alphabetical order like groupings")
 #str(tcp)#tcp$deck.lvl.1 for 
-#unique(make_new_dtm_faster$subject.fin)
-deklvl <- mlr::createDummyFeatures(make_new_dtm_faster$subject.fin)
+#unique(make_new_dtm_faster$subject)
+deklvl <- mlr::createDummyFeatures(make_new_dtm_faster$subject)
 deklvl <- as.matrix(deklvl)
 
 dtm3 <- t(deklvl) %*% dtm
+#dim(dtm3) subjects few are rows
 
 dtm3<-dtm3[,!(colnames(dtm3) %in% words.remove)]
-#?sweep()
+#?sweep() #remove function from every element
 props <- sweep(dtm3,MARGIN=2,STATS=colSums(dtm3),FUN='/')
-nups <- props * props * props * dtm3
- 
+#prop is percentage of the terms occurences happened in this subject
+nups <- props * props * props * props * dtm3
+#here the ngrams that were not in on single suubject get their counts reduce drmatically, at least by multiplied by .125 /2 
+#so claim that 
+
+#  dtm3[1:5,1:30]
+# print('space')
+#  props[1:5,1:30]
+# print('space')
+# nups[1:5,1:30]
 # summary(dtm3@x)
 # summary(props@x)
 # summary(nups@x)
 
+vocabulary.new <- data.frame(subjects=rownames(dtm3))
 for(i in 1:dim(nups)[1]){
   print(suj.nam <- rownames(dtm3)[i])
   hex <- nups[i,]
-  print(bow <- list(names(hex[order(-hex)])[1:20]))
-  crd$subject.bow.quantity[crd$subject.fin==suj.nam]<-bow
+  hex <- hex[hex > 1]
+  bow <- list(names(hex[order(-hex)]))
+  vocabulary.new$vocab[i]<-bow
+  print( bow[[1]][1:20])
+  crd$subject.bow.quantity[crd$subject==suj.nam] <- bow[[1]][1:20]
 }
 
 #crd$subject.bow[sample(1:100000,10)]
 ```
 
-
-get haberman distance betweeen decks
-
-```{r haberman 2}
-require(netCoin)
-
-dtm[dtm>1]<-1
-C <- coin(t(dtm)) # [sample.test,] coincidence matrix
-N <- asNodes(C) # node data frame
-N$deklv1 <- str_split(N$name," -- ",simplify = T)[,1]
-E <- edgeList(C,min = -1000,level=-1,criteria = "Haberman") # edge data frame
-# Net <- netCoin(N,E,dir="decks")
-# summary(E)
-E <- E[order(-E$Haberman),]
-# E
-# C
-# str(dtm)
-# str(C)
-```
-
-get elbow for Haberman values
-and check most common internal subject agreement
+Elbow between decks again. NetCoin network saved to directory. Open index.html to see it.
 ```{r elbow for haberman 2 values}
-
+E <- hold_for_conv_div_clusters
 #hist(E$Haberman)
 thelbow <- elbowr(sort(E$Haberman))$y
 print(paste("elbow is approximately different generative process so decides cuttoff:",round(thelbow,digits = 3)))
@@ -737,21 +770,23 @@ print(paste("elbow is approximately different generative process so decides cutt
 
 mor_join <- crd %>% 
   group_by(dek.nam) %>%
-  summarise(subject=first(subject.fin))
+  summarise(subject=first(subject))
 
 try({
   N <- merge(N,mor_join,all.x=T,by.y="dek.nam",by.x="name")
-  Net <- netCoin(N, E[E$Haberman > thelbow*.95,], dir = "deck_similar_word_network")
+  Net <- netCoin(N, E[E$Haberman > thelbow*.95,],color='subject', 
+                 dir = "deck_similar_word_network")#, community='lo'
 })
 
 # length(unique(E$Target))
 # length(unique(E$Source))
-
 ```
 
 
+Quantile quantile plot of similarity  between decks of same subjects and similarity  between decks of different subjects.
+Quantile-Quantile plot has nearly constant slope with internal (decks in same subject) coincidence reaching much higher than external. Internal coincidence is not significantly negative either. So I guess this is decent convergent vs divergent validation of the new clusters?
 ```{r convergent and divergent validation of subject clusters also barriers}
-
+{
 E <- merge(E,mor_join,all.x=T,by.y="dek.nam",by.x="Source")
 E <- merge(E,mor_join,all.x=T,by.y="dek.nam",by.x="Target")
 names(E)[4] <- "subject.Source"
@@ -759,10 +794,12 @@ internal <- E$subject.Source==E$subject.y
 
 int <- quantile(E$Haberman[internal],seq(.01,.99,.001))
 ext <- quantile(E$Haberman[!internal],seq(.01,.99,.001))
-print("highest external coincidences")
+print("because extremes cut, actual highest external and internal Haberman ")
 print(sort(E$Haberman[!internal],decreasing =T)[1:5])
+print(sort(E$Haberman[internal],decreasing =T)[1:5])
 ggplot(data=NULL,aes(ext,int)) + geom_point() + geom_smooth(method = "loess")
 #ggplot(data=NULL,aes(ext,int)) + geom_point() + xlim(0,max(ext)) +  ylim(0,max(int)) + geom_smooth(method = "glm")
+#ggplot(data=E,aes(Haberman,internal)) +geom_boxplot(coef=3)
 if(F){
 for(i in unique(E$subject.Source)){#i<-'AAlearning'
   internE <- (E$subject.Source==i & E$subject.y==i)
@@ -772,19 +809,20 @@ for(i in unique(E$subject.Source)){#i<-'AAlearning'
   plot(sort(E$Haberman[internE]))
 }
 }
+}
 ```
-Quantile-Quantile plot has nearly constant slope with internal (decks in same subject) coincidence reaching much higher than external. Internal coincidence is not significantly negative either. So I guess this is decent convergent vs divergent validation.
+
 
 
 
 Decks with most extreme relations to subject cluster. 
 For each subject make three tables.
 
-1. Central. 4 decks with most connection to the rest in the subject implying either the culmination or the foundation of the subject.
+1. Central. 4 decks with most connection to the rest in the subject implying either the culmination or the foundation of the subject. Ex: Sentences of a foreign language as a culmination of decks of vocab and conjugation. Deck of the overview of a subject with more technical or in depth decks.
 
-2. Bridging. 2 decks that are most similar to other subjects but still may belong to this one.
+2. Bridging. 2 decks that are most similar to other subjects but still may belong to this one. Not terribly useful.
 
-3. Missplaced. All decks that coincide more with other subjects than this one.  
+3. Missplaced. All decks that coincide more with other subjects than this one. CHANGEME Move these to where they belong.   
 
 ```{r most extreme deck relations to subject}
 subject_net_double <- 1
@@ -817,7 +855,7 @@ for(i in unique(E$subject.Source)){ #i<-'AAlearning'#i<-'ProgramingAdvancedWide'
     arrange(desc(third_haberman)) %>% 
     ungroup() %>% slice_head(n = 2)
   
-  print(unique(rbind(culmination_foundation[1:2,c(-2)],culmination_foundation2[1:2,c(-2)])))
+  print(unique(rbind(culmination_foundation[1:2,c(-2)],culmination_foundation2[1:2,c(-2)]))[,c("d1")])
 
 
   outgoingness <- deck_subject_summary %>% 
@@ -825,7 +863,7 @@ for(i in unique(E$subject.Source)){ #i<-'AAlearning'#i<-'ProgramingAdvancedWide'
     arrange(desc(two_third_haberman)) %>% 
     ungroup() %>% slice_head(n = 2)
   
-  print(outgoingness)
+  print(outgoingness[,c("d1","sub2")])
   
   
   indkey <- deck_subject_summary$sub2[deck_subject_summary$d1==deck_subject_summary$d1[1]] 
@@ -837,11 +875,15 @@ for(i in unique(E$subject.Source)){ #i<-'AAlearning'#i<-'ProgramingAdvancedWide'
   missdeks  <- deck_subject_summary %>%
     summarise(across(c(above_elbow, third_haberman, two_third_haberman), which.max)) %>%
      rowwise() %>%
-     mutate(misplaced = sum(c(above_elbow, third_haberman, two_third_haberman) != ind)) %>% ungroup() %>% filter(misplaced>2) %>% 
+     mutate(misplaced = sum(c(above_elbow, third_haberman, two_third_haberman) != ind)) %>% 
+    ungroup() %>% filter(misplaced>2) %>% 
      mutate(above_elbow=to_name(above_elbow),
             third_haberman=to_name(third_haberman),
             two_third_haberman=to_name(two_third_haberman)) %>%
-     relocate(misplaced) %>% relocate(d1)  
+    group_by(d1) %>%
+    mutate( most_common_subject = paste(unique(
+      c(above_elbow,third_haberman,two_third_haberman)),collapse = " ")) %>%
+    ungroup() %>% relocate(d1)  %>% select(d1,most_common_subject)
  
   print(missdeks)
         
@@ -849,9 +891,9 @@ for(i in unique(E$subject.Source)){ #i<-'AAlearning'#i<-'ProgramingAdvancedWide'
 ```
 
 
-
-TODO: by character count instead of count of cards?
-treemaps by subject
+ 
+ 
+Treemaps by subject. Area is quantity.
 ```{r must see some tiny results now or else}
 
 #require(treemapify)
@@ -859,7 +901,7 @@ require(treemap)
 require(grDevices)
  
 opp <- crd %>%  
-  group_by(subject.fin) %>% 
+  group_by(subject) %>% 
   summarise(
             Cards_in_deck = n(), 
             did = first(did),
@@ -875,21 +917,20 @@ opp <- crd %>%
 #dim(opp)
 #summary(opp)
 try({
-  treemap(opp, index="subject.fin", vSize="Cards_in_deck", vColor="percent_reviewed", type="manual", palette="RdYlBu")
+  treemap(opp, index="subject", vSize="Cards_in_deck", vColor="percent_reviewed", type="manual", palette="RdYlBu")
 })
   try({
-treemap(opp, index="subject.fin", vSize="sqrt_cards_in_deck", vColor="percent_reviewed", type="manual", palette="RdYlBu")
+treemap(opp, index="subject", vSize="sqrt_cards_in_deck", vColor="percent_reviewed", type="manual", palette="RdYlBu")
   })
     try({
  # itreemap(opp)
-treemap(opp, index="subject.fin", vSize="sqrt_seen_once", vColor="percent_reviewed", type="manual", palette="RdYlBu")
+treemap(opp, index="subject", vSize="sqrt_seen_once", vColor="percent_reviewed", type="manual", palette="RdYlBu")
 })
 
 
 
 ```
 
-TODO maybe histogram of unused decks belongs here so it can be compared?
  Histogram and density ridges of when each subject's cards added to collection
 ```{r when each subject added to collection}
 require(ggridges)
@@ -897,7 +938,7 @@ require(ggplot2)
 
 milli_to_date <- function(mili) as.Date((mili)/(24*60*60*1000), origin = "1970-01-01")
 
-ggplot(crd, aes(x = milli_to_date(did), y=subject.fin,fill = subject.fin, group=subject.fin)) +
+ggplot(crd, aes(x = milli_to_date(did), y=subject,fill = subject, group=subject)) +
   geom_density_ridges(stat = "binline", bins = 60, scale = 1.2) +
   scale_y_discrete(expand = c(0, 0)) +
   scale_x_continuous(expand = c(0, 0)) +
@@ -908,20 +949,20 @@ ggplot(crd, aes(x = milli_to_date(did), y=subject.fin,fill = subject.fin, group=
   scale_x_date(date_breaks="6 months")+
   theme(axis.title.y = element_blank(),axis.title.x = element_blank())
 
-#  ggplot(crd,aes(x=milli_to_date(did),y=subject.fin,fill = after_stat(x) )) + geom_density_ridges_gradient(scale = 1.2,rel_min_height = 0.01,gradient_lwd = 1.) +
+#  ggplot(crd,aes(x=milli_to_date(did),y=subject,fill = after_stat(x) )) + geom_density_ridges_gradient(scale = 1.2,rel_min_height = 0.01,gradient_lwd = 1.) +
 #   theme( axis.text.x = element_text(angle=30) )+#after_stat(density)
 #   scale_x_date(date_breaks="6 months")+
 #   scale_fill_gradientn(colors=rainbow(5))+
 #   xlab("Date when subject added") + ylab("Subject")
 
-# ggplot(crd, aes(x = milli_to_date(did), y = subject.fin, fill = stat(x))) +
+# ggplot(crd, aes(x = milli_to_date(did), y = subject, fill = stat(x))) +
 #   geom_density_ridges_gradient(scale = 3, rel_min_height = 0.01) +
 #   theme(axis.title.y = element_blank()) 
 
-# ggplot(crd, aes(x = milli_to_date(did), y = subject.fin, group = subject.fin)) +
+# ggplot(crd, aes(x = milli_to_date(did), y = subject, group = subject)) +
 #   geom_density_ridges2(
 #     stat = "binline",
-#     aes(fill = subject.fin),
+#     aes(fill = subject),
 #     binwidth = 1,
 #     scale = 0.95
 #   ) +
@@ -936,7 +977,7 @@ ggplot(crd, aes(x = milli_to_date(did), y=subject.fin,fill = subject.fin, group=
 # xlab("") + ylab("") 
 crd %>%
   #filter(!duplicated(nid)) %>%
-ggplot(aes(x=milli_to_date(did),fill=subject.fin))+
+ggplot(aes(x=milli_to_date(did),fill=subject))+
   geom_histogram(bins = 50)+
   xlab("Date") +
   #ggtitle( "histogram of additions by subject")+
@@ -949,32 +990,32 @@ ggplot(aes(x=milli_to_date(did),fill=subject.fin))+
 ```
 
 
-Cummulative notes in collection by subject.
+Cumulative notes in collection by subject.
 ```{r cumulative points of coll collection}
 crd <- crd[order(crd$did),]
 
 crd %>%
   filter(!duplicated(nid)) %>%
-  group_by(subject.fin) %>%
+  group_by(subject) %>%
   mutate(for.cumcount=1,
     cumulative.notes.in.coll = cumsum(for.cumcount)) %>%
-  ggplot(aes(x=milli_to_date(did),y=cumulative.notes.in.coll,color=subject.fin)) + geom_point() +
+  ggplot(aes(x=milli_to_date(did),y=cumulative.notes.in.coll,color=subject)) + geom_point() +
   scale_x_date(date_breaks="6 months")+ 
   theme( axis.text.x = element_text(angle=30) )+
   theme(axis.title.x = element_blank())
 ```
 
-Cummulative notes to be SEEN in collection by subject.
+Cumulative notes to be SEEN in collection by subject.
 ```{r cumulative points of SEEEN coll collection}
 crd <- crd[order(crd$did),]
 
 crd %>%
   filter(!duplicated(nid)) %>%
   filter((nid) %in% rev$nid) %>%
-  group_by(subject.fin) %>%
+  group_by(subject) %>%
   mutate(for.cumcount=1,
     cumulative.notes.to.be.seen.in.coll = cumsum(for.cumcount)) %>%
-  ggplot(aes(x=milli_to_date(did),y=cumulative.notes.to.be.seen.in.coll,color=subject.fin)) + geom_point() +
+  ggplot(aes(x=milli_to_date(did),y=cumulative.notes.to.be.seen.in.coll,color=subject)) + geom_point() +
   scale_x_date(date_breaks="6 months")+ 
   theme( axis.text.x = element_text(angle=30) )+
   theme(axis.title.x = element_blank())
@@ -982,17 +1023,17 @@ crd %>%
 
 Add subject to rev data table
 ```{r Add subject to rev data table}
-fr.join <- crd[,c("cid","subject.fin")]
+fr.join <- crd[,c("cid","subject")]
 fr.join$cid <- as.numeric(fr.join$cid)
 stopifnot(all(rev$cid %in% fr.join$cid))
 rev <- merge(rev,fr.join,by="cid",all.x = T,all.y = F)
 ```
 
-Histogram and density ridges of when each subject was reviewed. 
+Histogram and density ridges of when subject's cards were reviewed. 
 ```{r plots of time of reviews by subject }
 
  
-ggplot(rev,aes(x=milli_to_date(id),y=subject.fin,fill = stat(x))) +
+ggplot(rev,aes(x=milli_to_date(id),y=subject,fill = stat(x))) +
 geom_density_ridges_gradient(scale = 1, rel_min_height = 0.0001, gradient_lwd = 1.,panel_scaling=T) +
   coord_cartesian(clip = "off") +
   theme_ridges(font_size = 10)+
@@ -1003,7 +1044,7 @@ geom_density_ridges_gradient(scale = 1, rel_min_height = 0.0001, gradient_lwd = 
   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position = 'none')
 
 ggplot(rev)+
-  geom_histogram(aes(x=milli_to_date(id),fill=subject.fin),bins = 45)+
+  geom_histogram(aes(x=milli_to_date(id),fill=subject),bins = 45)+
   xlab("Date") +
   #ggtitle( "Histogram of reviews colored by subject")+
   scale_x_date(date_breaks="6 months")+ 
@@ -1015,16 +1056,16 @@ ggplot(rev)+
 
 ```
 
-Cumulative new notes reviewed by subject.
+Cumulative new notes reviewed, by subject.
 ```{r cumulative new notes reviewed by subject}
 rev <- rev[order(rev$id),]
 
 rev %>%
   filter(!duplicated(nid)) %>%
-  group_by(subject.fin) %>%
+  group_by(subject) %>%
   mutate(for.cumcount=1,
     cumulative.new.notes.reviewed = cumsum(for.cumcount)) %>%
-  ggplot(aes(x=milli_to_date(id),y=cumulative.new.notes.reviewed,color=subject.fin)) + geom_point() +
+  ggplot(aes(x=milli_to_date(id),y=cumulative.new.notes.reviewed,color=subject)) + geom_point() +
   scale_x_date(date_breaks="6 months")+ 
   theme( axis.text.x = element_text(angle=30) )+
   theme(axis.title.x = element_blank())
@@ -1032,13 +1073,16 @@ rev %>%
 
 
 
-All the above but by single subject per plot.
+Single subject per plot. Histogram of reviews colored by new or already seen cards. Three curves made of points of different colors describing cumulative sum of cards, added, added and later will be seen, and currently seen.
+The TRUE is reviews of cards already reviewed and FALSE is reviews of
+new notes. A two sided note will make 2 cards like hand -\> mano and
+mano -\> hand. Anki has somewhat similar plot.
 ```{r by subject accumulation of cards and reviews }
 rev <- rev[order(rev$id),]
 crd <- crd[order(crd$did),]
-for(i in unique(crd$subject.fin)){
-  crs <- crd[crd$subject.fin==i,]
-  res <- rev[rev$subject.fin==i,]
+for(i in unique(crd$subject)){
+  crs <- crd[crd$subject==i,]
+  res <- rev[rev$subject==i,]
   if(dim(res)[1]<100) next()
   
   nts_fg <- crs$did[!duplicated(crs$nid)]
@@ -1079,9 +1123,7 @@ print(p)
 }
 ```
 
-The TRUE is reviews of cards already reviewed and FALSE is reviews of
-new notes. A two sided note will make 2 cards like hand -\> mano and
-mano -\> hand. Anki has somewhat similar plot.
+
 
 
 ## end
@@ -1115,16 +1157,19 @@ comparedf(crd_compare,tocompare)
 Remove most objects from memory and save the rest into files.
 ```{r files to save and keep}
 #tf_mat
-saveRDS(tf_mat,"tf_mat2.RDS")
+saveRDS(vocabulary.new ,"new_vocabulary.RDS")
+saveRDS(tf_mat ,"wordlist.RDS")
 saveRDS(rev,"rev2.RDS")
 saveRDS(crd,"crd2.RDS")
+
+
 if(F){
 #rm(cards)
 #rm(note)
 #rm(crd)
 #rm(dek)
 
-rm(list=unlist(setdiff(ls(),c("rev","crd","tf_mat"))))
+rm(list=unlist(setdiff(ls(),c("rev","crd","tf_mat","vocabulary.new"))))
 }
 gc()
 save.image(file = 'Step_2_after.RData')
