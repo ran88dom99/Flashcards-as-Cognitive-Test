@@ -35,6 +35,7 @@ Running this notebook will make deck_similar_word_network folder contains a html
 
 ```{r setup, include=FALSE} 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+options(max.print=200)
 ```
 
 Load relevant files
@@ -56,7 +57,8 @@ if(!all(as.numeric(rev$cid) %in% as.numeric(crd$cid))){
 require(tidyverse, quietly = T)
 ```
 
-Approximate subject by assuming lowest level deck is the subject then putting any set less than 100 cards into 'other'. Will be superseded by 'Subject'. Number of cards per deck lowest deck.   
+Approximate subject by assuming lowest level deck is the subject then putting any set less than 100 cards into 'other'. Will be superseded by 'Subject'. Number of cards per deck lowest deck. 
+warning to self is this is broken then heirarchy not in crd yet
 ```{r Subject category variable via lowest level deck}
 #this is done to CRD in 'finding single subject folders' 
 if(T){ #makes agglo variable
@@ -65,8 +67,10 @@ hier.low.lev <- rev %>% group_by(dek.heir.lev.1) %>%
 print(hier.low.lev)
 
 to.other <- hier.low.lev$dek.heir.lev.1[(hier.low.lev$count.reviews<100)]
-rev$dek.agglo <- rev$dek.heir.lev.1
-rev$dek.agglo[rev$dek.agglo %in% to.other] <- "Other"
+
+
+crd$dek.agglo <- crd$dek.heir.lev.1
+crd$dek.agglo[crd$dek.agglo %in% to.other] <- "Other"
 }
 if(F){ #broke stats by each deck level deck
   for(i in (max_lv):1)  
@@ -201,7 +205,7 @@ for(i in 30:40){
 } 
 }
 #plot( sort(tf_mat$term_freq ))
-
+saveRDS(tf_mat ,"wordlist.RDS")
 ```
 
 
@@ -691,7 +695,7 @@ if( !all(sort(metest$subject.category) == sort(crd$subject.category))) stop("wei
 
 metest$subject.guessed<-metest$subject.category
 metest$subject.category<-NULL
-
+#subject.guessed is the anchor before merging anchors . Probably should be removed
 crd <- metest
 metest <- NULL
 ```
@@ -750,15 +754,19 @@ vocabulary.new <- data.frame(subjects=rownames(dtm3))
 for(i in 1:dim(nups)[1]){
   print(suj.nam <- rownames(dtm3)[i])
   hex <- nups[i,]
-  hex <- hex[hex > 1]
+  hex <- hex[hex > 1.99]
   bow <- list(names(hex[order(-hex)]))
   vocabulary.new$vocab[i]<-bow
   print( bow[[1]][1:20])
-  crd$subject.bow.quantity[crd$subject==suj.nam] <- bow[[1]][1:20]
+  crd$subject.bag.of.words[crd$subject==suj.nam] <- bow[[1]][1:20]
 }
+#notice subject.bag.of.words ends up with a single one of the 20 words per line but all of them in the end
 
+saveRDS(vocabulary.new ,"new_vocabulary.RDS")
 #crd$subject.bow[sample(1:100000,10)]
 ```
+
+
 
 Elbow between decks again. NetCoin network saved to directory. Open index.html to see it.
 ```{r elbow for haberman 2 values}
@@ -1156,9 +1164,8 @@ comparedf(crd_compare,tocompare)
 
 Remove most objects from memory and save the rest into files.
 ```{r files to save and keep}
-#tf_mat
-saveRDS(vocabulary.new ,"new_vocabulary.RDS")
-saveRDS(tf_mat ,"wordlist.RDS")
+
+saveRDS(words.remove ,"words_removed.RDS")
 saveRDS(rev,"rev2.RDS")
 saveRDS(crd,"crd2.RDS")
 
@@ -1171,8 +1178,11 @@ if(F){
 
 rm(list=unlist(setdiff(ls(),c("rev","crd","tf_mat","vocabulary.new"))))
 }
+
+saveRDS(options(),"options_from_two.RDS")
 gc()
 save.image(file = 'Step_2_after.RData')
+
 ```
 
 

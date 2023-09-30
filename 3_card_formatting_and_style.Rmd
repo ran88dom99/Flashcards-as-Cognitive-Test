@@ -1,0 +1,774 @@
+---
+title: "3_card_formatting_and_style"
+author: "DG"
+date: "2023-02-20"
+output:
+  html_document:
+    code_folding: hide
+  pdf_document: default
+editor_options:
+  markdown:
+    wrap: 70
+---
+
+<style type="text/css">
+  body{
+  font-size: 13pt;
+}
+</style>
+
+CHARACTERISTICS OF CARDS
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+options(max.print=200) 
+#two <- readRDS(file =paste0(getwd(),"/options_from_two.RDS"))
+#options(two)
+```
+```{r load tidyverse silently, include=FALSE}
+require(tidyverse, quietly = T)
+require(tibble)
+#require(data.table)
+```
+ Load relevant files
+```{r Load relevant files}
+
+#infoRDS("rev2.RDS") 
+crd <- tibble( readRDS(file =paste0(getwd(),"/crd2.RDS")) ) #because for some reason running readRDS when knitting outputs broken stuff
+rev <- tibble( readRDS(file =paste0(getwd(),"/rev2.RDS")) )
+#new_vocab <- readRDS(file =paste0(getwd(),"/new_vocabulary.RDS"))
+
+#load('Step_2_after.RData')
+check_all_decks_in_dtm <- length(unique(crd$dek.nam))
+if(!all(as.numeric(rev$cid) %in% as.numeric(crd$cid))){
+  (print(getwd()))
+  print(summary(crd))
+  print(summary(rev))
+} 
+#print("go")
+```
+
+functions useful for looking at data TODO DELETE
+```{r usefull functions}
+see.extreme.cards <- function(what.to.see,number.to.print=2,how.to.select,truncate.string.at=9999){
+  newnew <- what.to.see[order(-how.to.select)]
+  newnew <- newnew[1:number.to.print]
+  newnew <- str_sub(newnew,end=truncate.string.at+1)  #truncate.string.at<-30
+  return(newnew)
+}
+
+see.tops <- function(selector,num.to.print=3,truncate.string=999,
+                     show.opposite.end=T, print.dirty=T, print.clean=T, print.deck=T, print.statistic=T){
+
+if(print.clean) print(see.extreme.cards(what.to.see=crd$card.txt,how.to.select = selector,
+                                  num.to.print,truncate.string))
+if(print.dirty) print(see.extreme.cards(what.to.see=crd$card.txt.old,how.to.select = selector,
+                                  num.to.print,truncate.string))
+if(print.deck) print(see.extreme.cards(what.to.see=crd$dek.nam,how.to.select = selector,
+                                  num.to.print,truncate.string))
+if(print.statistic) print(see.extreme.cards(what.to.see=selector,how.to.select = selector,
+                                  num.to.print,truncate.string))
+
+if(show.opposite.end){
+  print("--------------------")
+if(print.clean) print(see.extreme.cards(what.to.see=crd$card.txt,how.to.select = -selector,
+                                  num.to.print,truncate.string))
+if(print.dirty) print(see.extreme.cards(what.to.see=crd$card.txt.old,how.to.select = -selector,
+                                  num.to.print,truncate.string))
+if(print.deck) print(see.extreme.cards(what.to.see=crd$dek.nam,how.to.select = -selector,
+                                  num.to.print,truncate.string))
+if(print.statistic) print(see.extreme.cards(what.to.see=selector,how.to.select = -selector,
+                                  num.to.print,truncate.string))
+}
+  
+}
+```
+Cleaning text function. Duplicate of what is in first step to debug it.  Clean card text. TODO DELETE
+```{r clean deck names}
+if(F){
+require(stringr, quietly = T)
+clean_strings <- function(ws,remove.digits=T){
+ws <- gsub(pattern = '\037'," -- ",ws,fixed = T)
+ws <- gsub(pattern = '<img src='," AN_IMAGE_HERE<  ",ws,fixed = T)
+ws <- gsub(pattern = '<.+?>'," ",ws,fixed = F)
+ws <- gsub(pattern = '[sound:'," SOUND_HERE[",ws,fixed = T)
+ws <- gsub(pattern = '\\[.+?\\]'," ",ws,fixed = F)
+ws <- gsub(pattern = '{{c'," ",ws,fixed = T)
+ws <- gsub(pattern = '::',":",ws,fixed = T)
+ws <- gsub(pattern = '}}'," ",ws,fixed = T)
+if(remove.digits){
+  ws <- gsub(pattern = '[[:digit:]][[:digit:]][[:digit:]]+'," % ",ws,fixed = F)
+}
+ws <- gsub(pattern = 'nbsp'," ",ws,fixed = T)
+ws <- gsub(pattern = '/n'," ",ws,fixed = T)
+ws <- str_squish(ws)
+ws <- str_squish(ws)
+#ws <- str_squish(ws)
+} 
+#crd$card.txt <- crd$card.txt.old
+#crd$card.txt <- sapply(crd$card.txt,clean_strings,remove.digits=F)
+
+
+sound <- '	
+Select ALL columns\037\037[row,]\037\037\037	'
+'
+partial matching of names is allowed with ___, for example: <br>x<- list(aardvark = 1:5)<br>x$a gives back ___<br>x[["a"]] gives back___<br>x[["a", exact = FALSE]]\037[sound:quizlet-2689720066-front.mp3]\037[[ and $, 1 2 3 4 5, NULL, 1 2 3 4 5\037[sound:quizlet-2689720066-back.mp3]\037\037'	
+
+
+'Super assignment <<-\037\037The ancestors of an environment have an important relationshi
+What does this matrix look like?<br><br>a <_ matrix(1:6, nrow = 2)\037\037[,1] [,2] [,3]<br>[1,] 1 3 5<br>[2,] 2 4 6<br>Notice the positional markers - e.g. [,1]. What do those mean?\037\037\037'	
+"What's wrong with this statement?<br><br># Create box_office<br>box_office <- c(new_hope + empire_strikes + return_jedi)\037\037What's wrong with this statement?<br><br># Create box_office<br>box_office <- c(new_hope, empire_strikes, return_jedi)<br><br>(Don't use "+"!)\037\037\037	"
+
+b<-'Write a conditional statement where R prints "x is a negative number" if x is <- -3.\037\037x <- -3<br>if(x <0) {<br> print("x is a negative number")<br>}\037\037\037'
+
+a<-"[[ subset\037\037Because [[ can return only a single item, you must use it with either a single positive integer or a single string. If you use a vector with [[, it will subset recursively, i.e. x[[c(1, 2)]] is equivalent to x[[1]][[2]]. This is a quirky feature that few know about, so I recommend avoiding it in favour of purrr::pluck()<br>While you must use [[ when working with lists, I'd also recommend using it with atomic vectors whenever you want to extract a single value. For example, instead of writing:\037\037\037"	
+
+print(clean_strings(sound))
+'Trick on planar graphs: {{c1::use Delaunay to build proximity structures in O(n log n)}}\037'	#special need to split cards along {{ }} later
+}
+```
+
+
+ 
+## writing style charactersitics native to anki or simplet to implement
+#### viz cleaning cards and  number of characters 
+ Number of characters. Also cards with too few real characters. 
+```{r count of chars}
+{
+crd$wstyle.nchar <- nchar(crd$card.txt)
+crd$wstyle.nchar.dirty <- nchar(crd$card.txt.old)
+ 
+crd %>% 
+  arrange(wstyle.nchar.dirty) %>%
+  filter(wstyle.nchar.dirty<10) %>%
+  select(card.txt,card.txt.old,wstyle.nchar.dirty,dek.nam)%>%
+  arrange(dek.nam) 
+}
+```
+
+Distribution of number of chars of cards by subject.
+```{r viz distribution of nchars of cards}
+if(F){
+crd %>%
+  arrange(wstyle.nchar) %>%
+  group_by(subject) %>%
+  mutate(for.cumcount=1,
+    cumulative.new.notes.reviewed = cumsum(for.cumcount)) %>%
+  ggplot(aes(x=cumulative.new.notes.reviewed,y=wstyle.nchar,color=subject)) + geom_point()+scale_y_log10()
+}
+require(ggridges)
+ggplot(crd,aes(wstyle.nchar, y=subject,fill = subject, group=subject)) + geom_density_ridges(stat = "binline", bins = 60, scale = 1)+ 
+  scale_y_discrete(expand = c(0, 0)) +
+  #scale_x_continuous(expand = c(0, 0)) +
+  coord_cartesian(clip = "off") +
+  scale_x_log10()+
+  theme_ridges(font_size = 10)+ 
+   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position	='none')
+  
+
+```
+Card text that becomes longer due to cleaning function because text was originaly too short or filled only one field. And ten cards shrunken most by cleaning.
+```{r cards become longer}
+{
+linear.correlation <- cor(log(crd$wstyle.nchar),log(crd$wstyle.nchar.dirty))
+print(paste("linear correlation between log original card text and log cleaned card text",round(linear.correlation,digits=3)))
+
+saveRDS(options(),"options_from_three.RDS")
+
+htm <- (crd$wstyle.nchar) / crd$wstyle.nchar.dirty
+crd %>% 
+  mutate(htm = htm) %>% 
+  arrange(-htm) %>%
+  filter(htm > 1.6) %>%
+  select(htm,dek.nam,card.txt.old,card.txt) %>%
+  arrange(dek.nam) 
+
+
+crd %>% 
+  mutate(htm = htm) %>% 
+  arrange(htm) %>%
+  slice_head(n=10) %>%
+  select(htm,dek.nam,card.txt.old,card.txt) %>%
+  arrange(dek.nam)  
+}
+```
+Comparisons of number of characters before and after cleaning.
+```{r viz issues with cleaning cards}
+require(ggridges)
+ggplot(crd,aes(wstyle.nchar/wstyle.nchar.dirty, y=subject,fill = subject, group=subject)) + geom_density_ridges(stat = "binline", bins = 60, scale = 1)+ 
+  scale_y_discrete(expand = c(0, 0)) +
+  #scale_x_continuous(expand = c(0, 0)) +
+  coord_cartesian(clip = "off") +
+  #scale_x_log10()+) #+ ,color=subjectad
+  theme_ridges(font_size = 10)+ 
+   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position	='none') + lims(x=c(0,1.3))
+
+linend<-min(max(crd$wstyle.nchar.dirty),max(crd$wstyle.nchar))
+
+ggplot(crd,aes(wstyle.nchar.dirty,wstyle.nchar)) + 
+  geom_point(aes(color=subject)) +
+  geom_segment(aes(x = 0, y = 0, xend = linend, yend = linend))#+ geom_smooth(method='lm') #+ scale_x_sqrt() + scale_y_sqrt()
+
+if(F){
+  ggplot(crd,aes(wstyle.nchar.dirty,wstyle.nchar,color=subject)) + 
+  geom_point(aes()) + #geom_smooth(method='lm') + 
+  lims(x= c(0, 2500), y = c(0, 2500))+
+  geom_segment(aes(x = 0, y = 0, xend = 2500, yend = 2500))
+}
+crd %>% 
+  filter(wstyle.nchar.dirty<2500,wstyle.nchar<2500) %>%
+ggplot(aes(wstyle.nchar.dirty,wstyle.nchar,color=subject))+#geom_point() +
+  geom_density_2d(bins=350) +# ,color=subjectadjust=1/300
+  geom_segment(aes(x = 0, y = 0, xend = 1500, yend = 1500))
+  
+
+```
+
+
+
+#### splitning note into parts
+
+
+
+Cards with only one field filled or less. Unfinished cards.
+```{r Cards with only one field filled or less.}
+require(stringr)
+only.one.field <- !str_detect(crd$card.txt,'[^ -][- ]{3,500}[^ -]' )
+only.one.field <- only.one.field & !str_detect(crd$card.txt.old,fixed('{{c') )
+crd %>% 
+  mutate(only.one.field = only.one.field) %>% 
+  filter(only.one.field) %>%
+  select(card.txt,card.txt.old,dek.nam) %>%
+  arrange(dek.nam)
+ 
+```
+count characters in clean cue - question
+```{r percent characters cue}
+crd$wstyle.nchar.cue <-
+  nchar(lapply(str_split(crd$card.txt,fixed("--")),function(x) x[[1]]))
+
+crd %>% 
+  arrange(wstyle.nchar.cue/wstyle.nchar) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,wstyle.nchar.cue,dek.nam) %>%
+  arrange(dek.nam)
+crd %>% 
+  arrange(-wstyle.nchar.cue/wstyle.nchar) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,wstyle.nchar.cue,dek.nam) %>%
+  arrange(dek.nam)
+```
+
+
+
+
+count chars in smallest section
+find cards with tiny fields
+
+```{r count chars in smallest section}
+crd$wstyle.nchar.min.field <- 
+  str_split(crd$card.txt,fixed("--")) %>%
+  #str_split(fixed("{{c")) %>%
+  #str_split(fixed("}}")) %>%
+    lapply( FUN= function(x){ 
+                  ut<-nchar(x) 
+                  max(min(ut[ut>1]),0)}) %>%
+  unlist()        
+
+
+
+crd$wstyle.nchar.min.field[is.infinite(crd$wstyle.nchar.min.field)] <- 0
+ # summary(crd$wstyle.nchar.min.field)
+
+cloze_min <- str_extract_all(crd$card.txt.old,pattern='\\{\\{c.+?\\}\\}') %>%
+  lapply( FUN= function(x){ 
+                  ut<-nchar(x) 
+                  return(max(min(ut[ut>1]),0))
+                  }) %>%
+  unlist() 
+
+cloze_min[is.infinite(cloze_min)] <- 0
+cloze_min <- cloze_min - 8
+cloze_min[cloze_min < 1] <- Inf
+
+
+crd$wstyle.nchar.min.field <- pmin(crd$wstyle.nchar.min.field,cloze_min)
+
+#bc should have split at 
+
+crd %>% 
+  arrange(wstyle.nchar.min.field) %>%
+  slice_head(n = 5) %>%
+  select(card.txt,card.txt.old,wstyle.nchar.min.field,dek.nam) %>%
+  arrange(dek.nam)
+crd %>% 
+  arrange(-wstyle.nchar.min.field) %>%
+  slice_head(n = 10) %>%
+  select(card.txt,card.txt.old,wstyle.nchar.min.field,dek.nam) %>%
+  arrange(dek.nam) %>%
+  filter(!duplicated(dek.nam)) 
+```
+
+
+
+
+
+
+```{r percent characters cue viz}
+ggplot(crd,aes(wstyle.nchar,wstyle.nchar.cue,color=subject)) + 
+  geom_point()+
+  geom_segment(aes(x = 0, y = 0, xend = 2000, yend = 1000))
+
+crd %>% 
+  filter(wstyle.nchar.cue<500,wstyle.nchar<2000) %>%
+ggplot(aes(wstyle.nchar,wstyle.nchar.cue,color=subject))+#geom_point() +
+  geom_density_2d(bins=300)+
+  geom_segment(aes(x = 0, y = 0, xend = 750, yend = 750/2))
+```
+
+```{r percent characters smallest field}
+ggplot(crd,aes(wstyle.nchar,wstyle.nchar.min.field,color=subject)) + 
+  geom_point() +
+  geom_segment(aes(x = 0, y = 0, xend = 2000, yend = 1000))
+
+crd %>% 
+  filter(wstyle.nchar.min.field<500,wstyle.nchar<750) %>%
+ggplot(aes(wstyle.nchar,wstyle.nchar.min.field,color=subject))+#geom_point() +
+  geom_density_2d(bins=200)+
+  geom_segment(aes(x = 0, y = 0, xend = 500, yend = 500/2))
+```
+cards per note
+```{r cards per note}
+crd %>% add_count(nid) -> crd
+crd$wstyle.cards.per.note <- crd$n
+crd$n <- NULL
+
+# crd %>% 
+#   arrange(wstyle.cards.per.note) %>%
+#   slice_head(n = 3) %>%
+#   select(card.txt,card.txt.old,wstyle.cards.per.note,dek.nam) %>%
+#   arrange(dek.nam)
+crd %>% 
+  group_by(card.txt) %>%
+  summarise(card.txt.old=first(card.txt.old),
+            wstyle.cards.per.note=first(wstyle.cards.per.note),
+            dek.nam=first(dek.nam)) %>%
+  slice_max(n = 3,order_by = wstyle.cards.per.note) %>%
+  ungroup() %>%
+  arrange(card.txt)
+
+crd %>% 
+  filter(wstyle.cards.per.note>0) %>%
+ggplot(aes(wstyle.cards.per.note, y=subject,fill = subject, group=subject)) + geom_density_ridges(stat = "binline", bins = 60, scale = 1)+ 
+  scale_y_discrete(expand = c(0, 0)) +
+  #scale_x_continuous(expand = c(-.5, 0)) +
+  coord_cartesian(clip = "off",expand =T) +
+  #scale_x_log10()+) #+ ,color=subjectad
+  theme_ridges(font_size = 10)+ 
+   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position	='none')  +lims(x=c(0,6))
+ 
+```
+
+Count Clozes
+```{r Count Clozes}
+
+crd$wstyle.clozes <- str_count(string = crd$card.txt.old,fixed("{{c")) 
+
+crd %>% 
+  arrange(-wstyle.clozes ) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,wstyle.clozes,dek.nam) %>%
+  arrange(dek.nam)
+
+ggplot(crd,aes(wstyle.clozes, y=subject,fill = subject, group=subject)) + geom_density_ridges(stat = "binline", bins = 60, scale = 1)+ 
+  scale_y_discrete(expand = c(0, 0)) +
+  #scale_x_continuous(expand = c(-.5, 0)) +
+  coord_cartesian(clip = "off",expand =T) +
+  #scale_x_log10()+) #+ ,color=subjectad
+  theme_ridges(font_size = 10)+ 
+   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position	='none')  +lims(x=c(-.50,7))
+```
+count fields per card
+```{r count fields per card}
+crd$wstyle.n.fields <- 
+  str_split(crd$card.txt,fixed("--")) %>%
+  #str_split(fixed("{{c")) %>%
+  #str_split(fixed("}}")) %>%
+    lapply( FUN= function(x){ 
+                  ut<-nchar(x) 
+                  ut<-ut[ut>1]
+                  return(length(ut))}) %>%
+  unlist() 
+
+
+ggplot(crd,aes(wstyle.n.fields, y=subject,fill = subject, group=subject)) + geom_density_ridges(stat = "binline", bins = 60, scale = 1)+ 
+  scale_y_discrete(expand = c(0, 0)) +
+  #scale_x_continuous(expand = c(-.5, 0)) +
+  coord_cartesian(clip = "off",expand =T) +
+  #scale_x_log10()+) #+ ,color=subjectad
+  theme_ridges(font_size = 10)+ 
+   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position	='none') +lims(x=c(0,10))
+
+crd %>%
+  #filter(wstyle.n.fields>0) %>%
+  mutate(interest = wstyle.n.fields) %>%
+  arrange(interest) %>%
+  slice_head(n=10) %>%
+  select(card.txt,card.txt.old,interest,dek.nam) %>%
+  arrange(dek.nam) %>%
+  filter(!duplicated(dek.nam))
+
+crd %>%
+  #filter(wstyle.n.fields>0) %>%
+  mutate(interest = wstyle.n.fields) %>%
+  arrange(-interest) %>%
+  slice_head(n=10) %>%
+  select(card.txt,card.txt.old,interest,dek.nam) %>%
+  arrange(dek.nam) %>%
+  filter(!duplicated(dek.nam))
+```
+
+
+ cloze vs note vs fields
+ a few have both and many require filling in a bunch of cloze prompts at once
+```{r cloze vs note vs fields}
+if(F){
+# require(GGally)
+# crd %>% 
+#   mutate(
+#     wstyle.clozes = runif(length(wstyle.clozes),-.4,.4) + wstyle.clozes,
+#     wstyle.n.fields = runif(length(wstyle.n.fields),-.4,.4) + wstyle.n.fields,
+#     wstyle.cards.per.note = runif(length(wstyle.cards.per.note),-.4,.4) + wstyle.cards.per.note
+#   ) %>%
+#  select(wstyle.clozes,wstyle.n.fields,wstyle.cards.per.note,subject) %>%
+# ggpairs(aes(color=subject),columns=1:3,
+#         lower = list(continuous = "points", combo = "dot_no_facet"),
+#        diag=list( continuous = "barDiag"))
+names(crd)
+
+huh <- crd %>%
+  group_by(card.txt) %>%
+  summarise(num=n(),
+            ord.max=first(ord.max))
+cor(huh$num,huh$ord.max,method = 'spearman')
+
+length(unique(crd$card.txt))
+length(unique(crd$nid))
+length(unique(crd$text.cue.cleaned))
+dim(crd)
+sum(table(crd$ord))
+one_ord <- crd %>%
+  group_by(nid) %>%
+  summarise(ey=sum(duplicated(ord)))
+table(one_ord$ey)
+crd<-crd[order(crd$ord),]
+one_ord <- crd %>%
+  group_by(nid) %>%
+  mutate(ey=c(na.omit(lag(sort(ord)))==1,1))
+table(one_ord$ey)
+  
+cor(crd$wstyle.cards.per.note,crd$ord.max,method = 'spearman')
+cor(crd$wstyle.n.fields,crd$ord.max,method = 'pearson')
+cor(crd$wstyle.clozes,crd$ord.max,method = 'pearson')
+cor(crd$wstyle.n.fields+crd$wstyle.clozes,crd$ord.max,method = 'pearson')
+
+cor(nchar(crd$text.cue.cleaned),crd$wstyle.nchar.cue,method = 'pearson')
+
+stop()
+}
+```
+so max ord is # fields (which one to show) and text.cue.cleaned is the very first cue for sure. nid is close to card txt 800/50000 . yeah ord never duplicates inside nid
+but ord does jump. stuck on checking if there is order to ord!
+
+scatterplots of each pair colored by subject
+```{r cloze vs note vs fields scatterplots}
+crd %>% 
+  mutate(
+    wstyle.clozes = rnorm(length(wstyle.clozes),-.2,.2) + wstyle.clozes,
+    wstyle.n.fields = rnorm(length(wstyle.n.fields),-.2,.2) + wstyle.n.fields,
+    wstyle.cards.per.note = rnorm(length(wstyle.cards.per.note),-.2,.2) + wstyle.cards.per.note
+  ) %>%
+ggplot(aes(wstyle.clozes,wstyle.n.fields,color=subject)) + 
+  geom_point() +
+  geom_segment(aes(x = 0, y = 0, xend = 5, yend = 5))
+
+crd %>% 
+  mutate(
+    wstyle.clozes = rnorm(length(wstyle.clozes),-.2,.2) + wstyle.clozes,
+    wstyle.n.fields = rnorm(length(wstyle.n.fields),-.2,.2) + wstyle.n.fields,
+    wstyle.cards.per.note = rnorm(length(wstyle.cards.per.note),-.2,.2) + wstyle.cards.per.note
+  ) %>%
+ggplot(aes(wstyle.cards.per.note,wstyle.clozes,color=subject)) + 
+  geom_point() +
+  geom_segment(aes(x = 0, y = 0, xend = 5, yend = 5))
+
+crd %>% 
+  mutate(
+    wstyle.clozes = rnorm(length(wstyle.clozes),-.2,.2) + wstyle.clozes,
+    wstyle.n.fields = rnorm(length(wstyle.n.fields),-.2,.2) + wstyle.n.fields,
+    wstyle.cards.per.note = rnorm(length(wstyle.cards.per.note),-.2,.2) + wstyle.cards.per.note
+  ) %>%
+ggplot(aes(wstyle.cards.per.note,wstyle.n.fields,color=subject)) + 
+  geom_point() +
+  geom_segment(aes(x = 0, y = 0, xend = 5, yend = 5))
+```
+```{r}
+# crd %>% 
+#   mutate(
+#     wstyle.clozes = rnorm(length(wstyle.clozes),-.2,.2) + wstyle.clozes,
+#     wstyle.n.fields = rnorm(length(wstyle.n.fields),-.2,.2) + wstyle.n.fields,
+#     wstyle.cards.per.note = rnorm(length(wstyle.cards.per.note),-.2,.2) + wstyle.cards.per.note
+#   ) %>%
+# ggplot(aes(wstyle.clozes,wstyle.n.fields,color=wstyle.cards.per.note)) + 
+#   geom_point() +
+#   scale_color_gradientn(colours=rainbow(5)) +
+#   geom_segment(aes(x = 0, y = 0, xend = 5, yend = 5))
+```
+
+more cards per note than clozes and fields mostly because of unfinished cards
+then far more clozes and fields than cards made
+```{r cloze vs note vs fields odd cards}
+crd %>%
+  filter(wstyle.clozes > 0 | wstyle.n.fields>2) %>%
+  mutate(interest = (wstyle.clozes + wstyle.n.fields )/(wstyle.cards.per.note+1)) %>%
+  filter(1 > interest) %>%
+  select(card.txt,card.txt.old,wstyle.clozes,wstyle.cards.per.note,interest,wstyle.n.fields,dek.nam) %>%
+  arrange(dek.nam) %>%
+  filter(!duplicated(card.txt))
+
+crd %>%
+  #filter(wstyle.clozes>0) %>%
+  mutate(interest = (wstyle.clozes + wstyle.n.fields )/wstyle.cards.per.note) %>%
+  arrange(-interest) %>%
+  slice_head(n=10) %>%
+  select(card.txt,card.txt.old,wstyle.clozes,wstyle.n.fields,wstyle.cards.per.note,interest,dek.nam) %>%
+  arrange(dek.nam)%>%
+  filter(!duplicated(dek.nam))
+```
+
+
+Cards with both lots of clozes and fields. Possibly bug.
+```{r cloze AND field}
+crd %>%
+  mutate(interest = (wstyle.clozes)*(wstyle.n.fields-1)) %>%
+  arrange(-interest) %>%
+  slice_head(n=100) %>%
+  select(card.txt,card.txt.old,interest,dek.nam) %>%
+  arrange(-interest) %>%
+  filter(!duplicated(dek.nam))
+```
+
+
+#### specific parts
+
+count characters that are not letters. print extremes
+```{r count characters that are not letters}
+crd$wstyle.not.letters.percent <- 1 - ( str_count(crd$card.txt, pattern = "[:letter:]{1}")) / crd$wstyle.nchar
+ 
+crd %>% 
+  arrange(wstyle.not.letters.percent) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,wstyle.not.letters.percent,dek.nam) %>%
+  arrange(dek.nam)
+crd %>% 
+  arrange(-wstyle.not.letters.percent) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,wstyle.not.letters.percent,dek.nam) %>%
+  arrange(dek.nam)
+
+#summary(crd$wstyle.not.letters.percent)
+```
+
+Where the maths?
+```{r math symbols}
+crd$wstyle.symbols.weird <- 0
+weirds <- c("→","sqrt","[latex]","^","σ","µ","β","α","𝜃","η","π","∈","ℝ","√","∪","≠","∅","≥","≤","∞","ˣ","₁","₀","²","³","[$]")#,
+
+for(i in weirds) {
+crd$wstyle.symbols.weird <- crd$wstyle.symbols.weird + str_count(crd$card.txt.old,fixed(i))
+}
+
+crd %>% 
+  arrange(-wstyle.symbols.weird) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,wstyle.symbols.weird,dek.nam) %>%
+  arrange(dek.nam)
+```
+Count images
+```{r Count images}
+
+crd$wstyle.images <- str_count(string = crd$card.txt.old,fixed('<img src=')) 
+
+crd %>% 
+  arrange(-wstyle.images ) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,wstyle.images,dek.nam) %>%
+  arrange(dek.nam)
+```
+ Count sounds
+```{r Count sounds}
+
+crd$wstyle.sounds <- str_count(string = crd$card.txt.old,fixed('[sound:')) 
+
+crd %>% 
+  arrange(-wstyle.sounds ) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,wstyle.sounds,dek.nam) %>%
+  arrange(dek.nam)
+```
+Document (cards) Term (words) Matrix for counting words
+```{r dtm to count words}
+crd <- crd[order(crd$cid),]
+require(textmineR, quietly = T)
+dtm <- CreateDtm(doc_vec = crd$card.txt, 
+                 # character vector of documents
+                 doc_names = crd$cid, 
+                 # document names, optional
+                 ngram_window = c(1,1), 
+                 # minimum and maximum n-gram length
+                 stopword_vec = c(), 
+                 # this is the default value
+                 lower = TRUE, # lowercase - this is the default value
+                 remove_punctuation = TRUE, 
+                 # punctuation - this is the default
+                 remove_numbers = TRUE, 
+                 # numbers - this is the default
+                 verbose = T, # Turn off status bar for this demo
+                 cpus = 2) 
+dim(dtm)
+# View(dtm[1:100,1:100])
+# dtm[1:100, 1:100]@Dimnames[[1]]
+# dtm[1:100, 1:100]@Dimnames[[2]]
+# dtm[1:100, 1:100]@p
+saveRDS(dtm,"DocTermMat.RDS")
+```
+
+Count common words
+```{r count common words}
+wuf <- unlist(tidytext::stop_words[,1]	)
+names(wuf) <- NULL
+stopword_vec = unique(c(stopwords::stopwords("en"),  
+      stopwords::stopwords(language = "en",source = "smart"),
+      stopwords::stopwords(language = "en", source = "marimo"),
+    stopwords::stopwords(language = "en", source = "nltk"),
+    wuf  ))
+
+crd <- crd[order(crd$cid),]
+woof <- dtm@Dimnames[[2]] %in% stopword_vec
+str(woof)
+howl <- matrix(woof,ncol = 1)
+common_per_card <- dtm %*% howl
+crd$wstyle.common.words <- as.vector(common_per_card)
+
+crd %>% 
+  arrange((wstyle.common.words  ) ) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,dek.nam,wstyle.common.words,wstyle.nchar) %>%
+  arrange(dek.nam)
+crd %>% 
+  arrange(-wstyle.common.words) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,dek.nam,wstyle.common.words,wstyle.nchar) %>%
+  arrange(dek.nam)
+
+```
+
+count core vocab defined as new vocab in step 2 .. but why? what constitutes a core word is too fickle. it depends on how user chooses to divide his cards among decks. also 2grams are not doing anything here
+```{r count core vocab}
+vocabulary.new <- readRDS(file = paste0(getwd(),"/new_vocabulary.RDS"))
+#vocabulary.new[[2]][[1]]
+
+itrs <- length(vocabulary.new[[2]])
+crd <- crd[order(crd$cid),]
+crd$wstyle.core.words <- 0
+for(i in 1:itrs) { #i<-1
+core_vocab <- vocabulary.new[[2]][[i]]
+core_vocab <- str_replace_all(core_vocab,"_"," ")
+core_vocab  <- setdiff(core_vocab,stopword_vec)
+woof <- dtm@Dimnames[[2]] %in% core_vocab
+howl <- matrix(woof,ncol = 1)
+core_per_card <- as.vector(dtm %*% howl)
+core_per_card <- (crd$subject == vocabulary.new[[1]][i]) * core_per_card 
+crd$wstyle.core.words[crd$wstyle.core.words == 0] <- core_per_card[crd$wstyle.core.words == 0]
+}
+
+crd %>% 
+  arrange((-wstyle.nchar + (wstyle.core.words * 1000) ) ) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,dek.nam,wstyle.core.words,wstyle.nchar) %>%
+  arrange(dek.nam)
+crd %>% 
+  arrange(-wstyle.core.words/wstyle.nchar) %>%
+  slice_head(n = 5) %>%
+  select(card.txt,card.txt.old,dek.nam,wstyle.core.words,wstyle.nchar) %>%
+  arrange(dek.nam)
+crd %>% 
+  arrange(-(wstyle.core.words )) %>%
+  slice_head(n = 3) %>%
+  select(card.txt,card.txt.old,dek.nam,wstyle.core.words,wstyle.nchar) %>%
+  arrange(dek.nam)
+```
+
+```{r plot some of the results}
+if(F){
+require(ggraptR)
+require(GGally)
+viz <- crd %>%
+  select(contains('wstyle'),"subject") 
+  
+crd %>%
+  select(contains('wstyle')) %>%
+  pairs()
+  
+ggpairs(viz)
+
+ggraptR(viz)
+
+?select()
+}
+```
+
+## quanteda text statistics like readability
+## card type constructs and deck purity
+```{r full points as decks in 3 d}
+crd %>%
+  group_by(dek.nam) %>%
+  summarize(subject=first(subject),
+            dirty.median=median(wstyle.nchar.dirty),
+            clean.median= median(wstyle.nchar),
+            use=mean(reps>0),
+            #wstyle.not.letters.percent=median(wstyle.not.letters.percent),
+            wstyle.nchar.cue=median(wstyle.nchar.cue),
+            count=n(),#orientation=lm(wstyle.nchar~wstyle.nchar.dirty)$coefficients[2]
+            ) %>%
+ggplot(aes(clean.median,wstyle.nchar.cue,color=subject,alpha=use,size=count)) + geom_point()+
+  scale_x_log10()+scale_y_log10()#+ lims(x= c(0, 1000), y = c(0, 1000))
+```
+
+```{r scraps for splitting notice issues}
+if(F){
+cloze_min <- str_extract_all('Changing a habit requires:\n<ol>\n<li>identifying a {{c1::cue}},</li>\n<li>having a {{c2::plan}}',pattern='\\{\\{c.+?\\}\\}') %>%
+  lapply( FUN= function(x){ 
+                  ut<-nchar(x) 
+                  max(min(ut[ut>1]),0)}) %>%
+  unlist()        
+crd$card.txt.old[1:1000]
+
+
+summary(cloze_min)
+str_detect(crd$card.txt.old,fixed('{{c') )
+
+str_split('Changing a habit -- requires:\n<ol>\n<li>identifying a {{c1::cue}},</li>\n<li>having a {{c2::plan}}',fixed("--")) %>%
+  print() %>%
+  unlist( ) %>%
+  str_split(fixed("{{c")) %>%
+  print() %>%
+  unlist( ) %>%
+   str_split(fixed("::")) %>%
+  print() %>%
+  unlist( ) %>%
+  str_split(fixed("}}")) %>%
+  unlist() %>%
+  print()
+}
+```
