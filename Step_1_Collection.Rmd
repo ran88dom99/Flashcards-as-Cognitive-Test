@@ -20,6 +20,8 @@ This step is mostly debugging and will not be interesting to anyone who is not a
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+options(max.print=200) 
 ```
 
 ## SECTION 1 LOAD DATA, CLEAN DATA
@@ -30,7 +32,7 @@ ways, Anki is being constantly developed, and I use many addons.
 Load Anki's sqlite database and turn it into several R tables.
 
 ```{r Load Ankis SQlite DB}
-options(max.print=200) 
+
 
 require(DBI)
 #CHANGEME
@@ -58,8 +60,12 @@ print(each.table[!(each.table %in%  names(al))])
 note<-al$notes
 cards<-al$cards
 dek<-al$decks
+fields<-al$fields
+#notetypes <- al$notetypes
 #names(dek)
 #head(dek$id)
+
+
 ```
 
 Basic history plots and info. Maybe reveal bug.
@@ -94,6 +100,8 @@ require(tidygraph, quietly = T)
 
 #this part may better belong in 'merge all' block
 names(note)[1] <- "nid"
+names(note)[3] <- "ntid"
+names(note)[8] <- "text.cue.cleaned"
 names(note)[names(note)=="flds"] <- "card.txt"
 names(cards)[1] <- "cid"
 names(dek)[1] <- "did"
@@ -101,6 +109,8 @@ names(dek)[2] <- "dek.nam"
 
 hist(milli_to_date(cards$cid),100)
 hist(milli_to_date(note$nid),100)
+
+
 ```
 
 
@@ -109,11 +119,18 @@ Merge all useful info into a single object (sheet). Bug checks too.
 
 ```{r merge most data into single structure}
 {
+  print(paste("percent notes's note type id in fields's ids:",
+            round(sum(note$ntid %in% fields$ntid)/length(note$ntid),3)))
+  fields <- fields %>%
+    group_by(ntid) %>%
+    summarise(ord.max=max(ord))
+  note<-merge(note,fields,all.x = T,all.y=F)
+
 print(paste("percent card's note id in note's ids:",
             round(sum(cards$nid %in% note$nid)/length(cards$nid),3)))
 print(paste("percent note's note id in card's ids:",
             round(sum(note$nid %in% cards$nid)/length(note$nid),3)))
-cards<-merge(cards,note[,c("nid","card.txt")],all.x = T,all.y=F)
+cards<-merge(cards,note[,c("nid","card.txt","ord.max","text.cue.cleaned")],all.x = T,all.y=F)
 print(paste("percent card's deck id in deck's ids :",
             round(sum(cards$did %in% dek$did)/length(cards$did),3)))
 print(paste("percent deck's deck id in card's ids :",
@@ -637,6 +654,7 @@ clean_strings <- function(ws,remove.digits=T){
 ws <- gsub(pattern = '\037'," -- ",ws,fixed = T)
 ws <- gsub(pattern = '<img src='," AN_IMAGE_HERE<  ",ws,fixed = T)
 ws <- gsub(pattern = '<.+?>'," ",ws,fixed = F)
+ws <- gsub(pattern = '[sound:'," SOUND_HERE[",ws,fixed = T)
 ws <- gsub(pattern = '\\[.+?\\]'," ",ws,fixed = F)
 ws <- gsub(pattern = '{{c'," ",ws,fixed = T)
 ws <- gsub(pattern = '::',":",ws,fixed = T)
@@ -649,6 +667,8 @@ ws <- gsub(pattern = '/n'," ",ws,fixed = T)
 ws <- str_squish(ws)
 ws <- str_squish(ws)
 #ws <- str_squish(ws)
+#ws <- gsub(pattern = '-- -- ',"-- ",ws,fixed = T)
+#ws <- gsub(pattern = '-- -- ',"-- ",ws,fixed = T)
 } 
 
 if(T){
