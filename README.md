@@ -12,7 +12,7 @@ debugging and minutia.
 CHANGEME \<- If you run this notebook on your own data search for this
 tag to find things you may need to change.
 
-All the code was written for one specific database with its own idiosyncrasies. Please help me fix this by submitting errors on github along with your data as in step 2. Because project infers lots from data with little outside information, some sections require lots of data, like 50k reviews and 5k cards, and this may be unavoidable.   
+All the code was written for one specific database with its own idiosyncrasies. Please help me fix this by submitting errors on github along with your data as in step 2. Because project infers lots from data with little outside information, some sections require lots of data, like 10k reviews and 5k cards, and this may be unavoidable.   
 
 1. Running these notebooks at home on your own data. 
 
@@ -20,7 +20,7 @@ On windows,install R and RStudio. Find collection.anki2 file (in my case "Anki\A
 
 WARNING some of these notebooks take a LONG time to run. 
 
-2. Uploading anki database to Jupyter or Open Humans
+2. Uploading anki database to Jupyter or Open Humans (not yet available)
 
 DATA LIKE THE CONTENTS OF NOTES AND CARDS WILL BECOME AVAILABLE TO AND IN THIS NOTEBOOK. If you do not have anything private in your collection just upload a copy of the database. If you do not want anyone to see some notes follow the following instructions. Make backups of all important directories which in my case is all under Anki. Disconnect from internet so Anki does not sync. Open anki. Delete Private decks and ones that may cause errors. Quit Anki. Send new collection.anki2 file to Open Humans. Replace new folders on you computer with backup to get deleted decks back.
 
