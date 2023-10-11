@@ -5,6 +5,8 @@ date: "2023-05-30"
 output:
   html_document:
     code_folding: hide
+    toc: true
+    toc_depth: 3
   pdf_document: default
 editor_options:
   markdown:
@@ -21,6 +23,8 @@ DETERMINE SUBJECT OF DECKS BY SIMILAR WORDS
 
 Later notebooks will benefit from using the subject of a deck instead of the deck name or folder heirarchy. At least for big collections. Several things may indicate subject similarity; when the decks were added, when they were reviewed, where in the folder of deck heirarchy did user put each deck and what rare words are in the cards of the deck. The first two are not actualy very useful. Text mining is complicated and user should have an easy way to give input so user's deck hierarchy. This takes precedence over word coincidence. 
 
+The output of this notebook can vary depending on small changes to U's collection. This is most drastic when the final anchor decks merge.
+
 Users not applying this notebook to their own data may be interested in the plots and results inside section 'Studies and visualizations of results'. 
 
 I imagine many people organize their decks by what they intend to do with the deck rather than by subject matter. Specifically they could have in their collection lowest level deck of 'trashed', 'highest importance', 'learning' and 'maintaining' and plenty of single subject folders. App splits all folders found to contain too much disagreement (multi subject folders), then the decks these split folders held are added to low level single subject folders. LL SS folders with too much in common are combined with other LL SS folders into subjects. During process original folder hierarchy is unaltered and kept separately. 
@@ -31,7 +35,7 @@ Notebook was built around big collection. To help the algorithm, User could add 
 
 Running this notebook will make deck_similar_word_network folder contains a html file which shows all decks and strong enough edges (coincidence of words between decks stronger than elbow) at once and is helpful for seeing clusters.
 
-## Prep and calculations
+## Prep
 
 ```{r setup, include=FALSE} 
 knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
@@ -88,7 +92,7 @@ rev %>% group_by(dek.nam) %>%
 ```
 
 
-
+## First pass through similar subject algorithm
 Each deck's cards text converted into single text vector / document.
 ```{r crd to tcp for dtm}
 
@@ -209,7 +213,7 @@ saveRDS(tf_mat ,"wordlist.RDS")
 ```
 
 
-Remove ngrams that occur in at least half of all lowest hierarchy folders. This might cause problems for small collections. 
+Remove ngrams that occur in at least half of all lowest hierarchy folders. This might cause problems for small collections. CHANGEME maybe
 ```{r removing ngrams that are in too many decks}
 
 deklvl <- mlr::createDummyFeatures(tcp$deck.lvl.1)
@@ -226,7 +230,7 @@ dtm <- dtm[,!(colnames(dtm) %in% words.remove)]
 ```
 
 Haberman formula takes in two dichotomous variables, calculates their coincidence, and outputs a similarity distance (or how unlikely that there is no relation between them) in standard deviations. 
-Haberman formula is applied to word incidence to detect the similarity in subject matter between two decks.
+Haberman formula is applied to word incidence to detect the similarity in subject matter between two decks. If bug CHANGEME.
 ```{r haberman}
 {
 require(netCoin)
@@ -286,7 +290,8 @@ elbowr <- function(y=sort(curve),x=1:length(y) ) {
 thelbow <- elbowr(sort(E$Haberman))$y
 
 print(paste("elbow / cuttoff:",round(thelbow,digits = 3)))
-plot(y=sort(E$Haberman),x=1:length(E$Haberman))
+plot(x=sort(E$Haberman),y=1:length(E$Haberman))
+abline(v=thelbow)
 
 # length(unique(E$Target))
 # length(unique(E$Source))
@@ -388,14 +393,14 @@ edge_dist_clustered <- function(Edges,hclust.method="average",cut.at.height=.01,
 ```
 
 
-Find clusters of decks that have very very similar subjects, or at least vocabularies. Could be important interesting for understanding collection detecting decks that may as well be duplicates.
+Find clusters of decks that have very very similar subjects, or at least vocabularies. Could be important interesting for understanding collection and detecting decks that may be duplicates.
 
 ```{r subclusters of all decks}
 E$dist <- ifelse(E$Haberman >= thelbow*1,1000-E$Haberman,
           ifelse(E$Haberman > 2,10000,100000) )
 sink <- edge_dist_clustered(Edges=E,hclust.method="complete",
                             verby=F,vverby=F,cut.at.height=1001)
-
+#'complete' will still cluster the same decks together if any other decks are removed but may splinter if decks are added. So this changes based on new decks added. But closest coincidence decks will still be clustered together first and least subject to splintering. 
 dp <- crd %>% 
 group_by(dek.nam) %>%
   summarize(n=n()) 
@@ -668,6 +673,7 @@ for(i in dtm2f@Dimnames[[1]]){
 ```
 
 
+### Group Anchor Folders into Subjects
 Merge some of the ll anchor decks because they have same subject. CHANGEME hclust.method can be changed to "complete", "average" instead of single. See ?hclust. TODO I think there are more appropriate methods but later. Maybe algorithm overenthusiastic. 
 ```{r new subject clusters}
 #str(crd)
@@ -700,16 +706,18 @@ crd <- metest
 metest <- NULL
 ```
 
-Error and cards per subject.
+Cards per subject
 
 ```{r check that every crd got a subject}
-# check that every crd got a subject
-crd %>% group_by(dek.nam) %>%
-summarize(d=n_distinct(subject)) %>% 
-  filter(d>1)
-
 crd %>% group_by(subject) %>%
 summarize(d=n_distinct(cid))
+
+# check that every crd got a subject
+err <- crd %>% group_by(dek.nam) %>%
+summarize(d=n_distinct(subject)) %>% 
+  filter(d>1)
+if(dim(err)[1] > 1) print(err) 
+
   
 ```
 ## Studies and visualizations of results
@@ -805,7 +813,9 @@ ext <- quantile(E$Haberman[!internal],seq(.01,.99,.001))
 print("because extremes cut, actual highest external and internal Haberman ")
 print(sort(E$Haberman[!internal],decreasing =T)[1:5])
 print(sort(E$Haberman[internal],decreasing =T)[1:5])
-ggplot(data=NULL,aes(ext,int)) + geom_point() + geom_smooth(method = "loess")
+tp <- ggplot(data=NULL,aes(ext,int)) + geom_point() + geom_smooth(method = "loess")
+tp
+print(tp)
 #ggplot(data=NULL,aes(ext,int)) + geom_point() + xlim(0,max(ext)) +  ylim(0,max(int)) + geom_smooth(method = "glm")
 #ggplot(data=E,aes(Haberman,internal)) +geom_boxplot(coef=3)
 if(F){
@@ -844,6 +854,8 @@ for(i in unique(E$subject.Source)){ #i<-'AAlearning'#i<-'ProgramingAdvancedWide'
   g=(subject_net_double$sub1==i)
   rm(subject_n)
   subject_n <- as.data.frame(subject_net_double[g,])
+  
+  print(paste(i, " ------------------------"))
   
   deck_subject_summary <- subject_n %>% 
     group_by(d1) %>% 
@@ -890,7 +902,7 @@ for(i in unique(E$subject.Source)){ #i<-'AAlearning'#i<-'ProgramingAdvancedWide'
             two_third_haberman=to_name(two_third_haberman)) %>%
     group_by(d1) %>%
     mutate( most_common_subject = paste(unique(
-      c(above_elbow,third_haberman,two_third_haberman)),collapse = " ")) %>%
+      c(above_elbow,third_haberman,two_third_haberman)),collapse = "; ")) %>%
     ungroup() %>% relocate(d1)  %>% select(d1,most_common_subject)
  
   print(missdeks)
@@ -901,7 +913,7 @@ for(i in unique(E$subject.Source)){ #i<-'AAlearning'#i<-'ProgramingAdvancedWide'
 
  
  
-Treemaps by subject. Area is quantity.
+Treemaps by subject. Area is quantity. sqrt_seen_once (area) is the square root of number of cards ever seen in subject.
 ```{r must see some tiny results now or else}
 
 #require(treemapify)
@@ -927,10 +939,10 @@ opp <- crd %>%
 try({
   treemap(opp, index="subject", vSize="Cards_in_deck", vColor="percent_reviewed", type="manual", palette="RdYlBu")
 })
-  try({
+  if(F){ try({
 treemap(opp, index="subject", vSize="sqrt_cards_in_deck", vColor="percent_reviewed", type="manual", palette="RdYlBu")
-  })
-    try({
+  })}
+   try({
  # itreemap(opp)
 treemap(opp, index="subject", vSize="sqrt_seen_once", vColor="percent_reviewed", type="manual", palette="RdYlBu")
 })
