@@ -55,3 +55,6 @@ Also Anki Simulator and True Retention addons which I should review.
 
 Mnemosny, an app similar to anki, has a database of user's reviews
 which used to be available for the public.
+
+AnkiPandas https://ankipandas.readthedocs.io/en/latest/projects_with_ap.html  
+would be a competitor but it just is not yet
