@@ -21,15 +21,13 @@ editor_options:
 
 DETERMINE SUBJECT OF DECKS BY SIMILAR WORDS
 
-Later notebooks will benefit from using the subject of a deck instead of the deck name or folder heirarchy. At least for big collections. Several things may indicate subject similarity; when the decks were added, when they were reviewed, where in the folder of deck heirarchy did user put each deck and what rare words are in the cards of the deck. The first two are not actualy very useful. Text mining is complicated and user should have an easy way to give input so user's deck hierarchy. This takes precedence over word coincidence. 
-
-The output of this notebook can vary depending on small changes to U's collection. This is most drastic when the final anchor decks merge.
+Later notebooks will benefit from using the subject of a deck instead of the deck name or folder heirarchy. At least for big collections with mixed subject decks. Several things may indicate subject similarity; when the decks were added, when they were reviewed, where in the folder of deck heirarchy did user put each deck and what rare words are in the cards of the deck. The first two are not actualy very useful. Text mining is complicated and user should have an easy way to give input so user's deck hierarchy takes precedence over word coincidence. 
 
 Users not applying this notebook to their own data may be interested in the plots and results inside section 'Studies and visualizations of results'. 
 
-I imagine many people organize their decks by what they intend to do with the deck rather than by subject matter. Specifically they could have in their collection lowest level deck of 'trashed', 'highest importance', 'learning' and 'maintaining' and plenty of single subject folders. App splits all folders found to contain too much disagreement (multi subject folders), then the decks these split folders held are added to low level single subject folders. LL SS folders with too much in common are combined with other LL SS folders into subjects. During process original folder hierarchy is unaltered and kept separately. 
+I imagine many people organize their decks by what they intend to do with the deck rather than by subject matter. Specifically they could have in their collection lowest level deck of 'trashed', 'highest importance', 'learning' and 'maintaining' and plenty of single subject folders. App splits all folders found to be too multisubject, then the decks these split folders held are added to low level single subject folders. LL SS folders with too much in common are combined with other LL SS folders into Subjects. During process original folder hierarchy is unaltered and kept separately. 
 
-Running subject detection algorithm on own data will still help User understand their collection and habits even if results of the subject detection algorithm can change a great deal with small changes to input. Users applying app to their own data should start checking that the output is reasonable at '## Decks rearranged for Subject' .
+The output of this notebook can vary depending on small changes to U's collection. Effect is most drastic when the final anchor decks merge. Running subject detection algorithm on own data will still help User understand their collection and habits. Users applying app to their own data should start checking that the output is reasonable at '## Decks rearranged for Subject' .
 
 Notebook was built around big collection. To help the algorithm, User could add prospective things you might be interested in but have no plans for. Algorithms require that at least half all lowest level decks are single subject. There must be at least one ll ss 'anchor' deck for each subject. All multisubject lowest level decks must be at most 50% single subject by number of decks with cards. 
 
@@ -92,7 +90,7 @@ rev %>% group_by(dek.nam) %>%
 ```
 
 
-## First pass through similar subject algorithm
+## First use of similar subject algorithm
 Each deck's cards text converted into single text vector / document.
 ```{r crd to tcp for dtm}
 
@@ -197,10 +195,10 @@ tf_smlrams <- tf_mat[ !(stringr::str_detect(tf_mat$term, "_")) , ]
 tf_smlrams <- tf_smlrams[tf_smlrams$term_freq>2,]
 head(tf_smlrams[ order(tf_smlrams$term_freq, decreasing = FALSE) , ], 10)
 
-# look at the most frequent bi-grams, and least frequent too
+# look at the most frequent bi-grams, and least frequent just for double check
 tf_bigrams <- tf_mat[ stringr::str_detect(tf_mat$term, "_") , ]
 head(tf_bigrams[ order(tf_bigrams$term_freq, decreasing = TRUE) , ], 20)
-head(tf_bigrams[ order(tf_bigrams$term_freq, decreasing = FALSE) , ], 10)
+head(tf_bigrams[ order(tf_bigrams$term_freq, decreasing = FALSE) , ], 6)
 
 if(F){
 for(i in 30:40){
@@ -239,6 +237,7 @@ dtm[dtm>1]<-1
 C <- coin(t(dtm), minimum = 1) # [sample.test,] coincidence matrix
 N <- asNodes(C) # node data frame
 N$deklv1 <- str_split(N$name," -- ",simplify = T)[,1]
+Ne <- N
 E <- edgeList(data=C,min = -1000,level=-1,criteria = "Haberman") # edge data frame
 # Net <- netCoin(N,E,dir="decks")
 # summary(E)
@@ -464,7 +463,7 @@ E <- cbind(E,cbind(source.unfurl,target.unfurl))
 E$folder.one.cluster.s <- E$dek.heir.lev.1.source
 E$folder.one.cluster.t <- E$dek.heir.lev.1.target
 crd$subject.category <- crd$dek.heir.lev.1
-crd$subject.folder.level <- 1
+crd$subject.folder.split.level <- 1
 
 E$dist <- ifelse(E$Haberman >= thelbow*.95,.0001,
           ifelse(E$Haberman > 2,1,10) )
@@ -495,7 +494,7 @@ change.crd <- crd$subject.category %in% folder.split
 change.source <- E$folder.one.cluster.s %in% folder.split
 change.target <- E$folder.one.cluster.t %in% folder.split
 
-crd$subject.folder.level[change.crd] <- folder.lv+1
+crd$subject.folder.split.level[change.crd] <- folder.lv+1
 new.crd <- crd[change.crd,names(crd)==paste0("dek.heir.lev.",folder.lv+1)]
 new.so <- E[change.source,names(E)==paste0("dek.heir.lev.",folder.lv+1,".source")]
 new.tr <- E[change.target,names(E)==paste0("dek.heir.lev.",folder.lv+1,".target")]
@@ -510,8 +509,8 @@ E$folder.one.cluster.t[change.target] <- new.tr
 Newly detached decks attached to remaining ll ss anchor folders. New anchor folder for each deck is chosen by  median of detached deck's vocab similarity to each deck in anchor folder. When applying this to my collection, most decks end up where they are supposed to be, but some get attached to seemingly unrelated anchors. CHANGEME Again, your own collection.
  
 ```{r reattach detached smaller decks}
-deks.reattach <- unique(crd$subject.category[crd$subject.folder.level > 1])
-deks.main <- unique(crd$subject.category[crd$subject.folder.level == 1])
+deks.reattach <- unique(crd$subject.category[crd$subject.folder.split.level > 1])
+deks.main <- unique(crd$subject.category[crd$subject.folder.split.level == 1])
 contain.mains <- E$folder.one.cluster.s %in% deks.main | E$folder.one.cluster.t %in% deks.main
 E$main.dek <- ""
 E$main.dek[contain.mains] <- E$folder.one.cluster.s[contain.mains]
@@ -582,7 +581,7 @@ E <- E[order(-E$Haberman),]
 thelbow <- elbowr(sort(E$Haberman))$y
 print(paste('elbow cuttoff between subjects ',thelbow))
 #summary(sort(tcp$num_chars))
-tcp<-tcp[order(tcp$num_chars),]
+tcp <- tcp[order(tcp$num_chars),]
 #tcp$subject
 
 #Net <- netCoin(N, E[E$Haberman>thelbow*1,], dir="aftercut_first_step_aglo")
@@ -699,9 +698,9 @@ metest <- merge(crd, mergagain, by.x = "subject.category", by.y = "subject.dek",
 
 if( !all(sort(metest$subject.category) == sort(crd$subject.category))) stop("weird")
 
-metest$subject.guessed<-metest$subject.category
-metest$subject.category<-NULL
-#subject.guessed is the anchor before merging anchors . Probably should be removed
+metest$subject.anchor.folder <- metest$subject.category
+metest$subject.category <- NULL
+#subject.anchor.folder is the anchor before merging anchors . Probably should be removed
 crd <- metest
 metest <- NULL
 ```
@@ -722,7 +721,7 @@ if(dim(err)[1] > 1) print(err)
 ```
 ## Studies and visualizations of results
 
-Words most common to each subject but rarely in other subjects. Understand the subject and maybe make new vocabulary cards.
+Words most common to each subject but rarely in other subjects. Understand the subject and maybe make new vocabulary cards. 
 ```{r subject bag of words}
 make_new_dtm_faster <- crd %>%
   group_by(dek.nam) %>%
@@ -766,7 +765,7 @@ for(i in 1:dim(nups)[1]){
   bow <- list(names(hex[order(-hex)]))
   vocabulary.new$vocab[i]<-bow
   print( bow[[1]][1:20])
-  crd$subject.bag.of.words[crd$subject==suj.nam] <- bow[[1]][1:20]
+  #crd$subject.bag.of.words[crd$subject==suj.nam] <- bow[[1]][1:20]
 }
 #notice subject.bag.of.words ends up with a single one of the 20 words per line but all of them in the end
 
@@ -789,7 +788,7 @@ mor_join <- crd %>%
   summarise(subject=first(subject))
 
 try({
-  N <- merge(N,mor_join,all.x=T,by.y="dek.nam",by.x="name")
+  N <- merge(Ne,mor_join,all.x=T,by.y="dek.nam",by.x="name")
   Net <- netCoin(N, E[E$Haberman > thelbow*.95,],color='subject', 
                  dir = "deck_similar_word_network")#, community='lo'
 })
@@ -915,7 +914,6 @@ for(i in unique(E$subject.Source)){ #i<-'AAlearning'#i<-'ProgramingAdvancedWide'
  
 Treemaps by subject. Area is quantity. sqrt_seen_once (area) is the square root of number of cards ever seen in subject.
 ```{r must see some tiny results now or else}
-
 #require(treemapify)
 require(treemap)
 require(grDevices)
@@ -946,9 +944,30 @@ treemap(opp, index="subject", vSize="sqrt_cards_in_deck", vColor="percent_review
  # itreemap(opp)
 treemap(opp, index="subject", vSize="sqrt_seen_once", vColor="percent_reviewed", type="manual", palette="RdYlBu")
 })
+```
 
 
+```{r heirarchical treemap}
 
+opp <- crd %>%  
+  group_by(simplest.name) %>% 
+  summarise(
+    subject = first(subject),
+    Cards_in_deck = n(), 
+    did = first(did),
+    seen.once = sum((cid) %in% rev$cid)
+  ) %>%
+  mutate(
+    percent_reviewed = (seen.once / Cards_in_deck),
+    Sqrt.cards.in.deck = sqrt(Cards_in_deck),
+    sqrt.cards.seen.once = sqrt(seen.once)
+  )
+
+#dim(opp)
+#summary(opp)
+try({
+treemap(opp, index=c("subject","simplest.name"), vSize="Cards_in_deck", vColor="percent_reviewed", type="manual", palette="RdYlBu")
+})
 ```
 
  Histogram and density ridges of when each subject's cards added to collection
@@ -995,18 +1014,24 @@ ggplot(crd, aes(x = milli_to_date(did), y=subject,fill = subject, group=subject)
 #   scale_x_date(date_breaks="6 months")+ 
 #   theme( axis.text.x = element_text(angle=30) )+
 # xlab("") + ylab("") 
+new_order <- crd %>%
+  group_by(subject) %>%
+  summarize(use=var(hist(did,bin=45,plot=F)$counts)) %>%
+  arrange(-use)
+
 crd %>%
   #filter(!duplicated(nid)) %>%
-ggplot(aes(x=milli_to_date(did),fill=subject))+
-  geom_histogram(bins = 50)+
+ggplot(aes(x=milli_to_date(did),fill=factor(subject,levels = new_order$subject)))+
+  geom_histogram(bins = 45)+
   xlab("Date") +
+  scale_fill_brewer(palette = "Set1")+
   #ggtitle( "histogram of additions by subject")+
   scale_x_date(date_breaks="6 months")+ 
   theme( axis.text.x = element_text(angle=30) )+
   labs(colour = " ")+
-  theme(axis.title.y = element_blank(),axis.title.x = element_blank())
-
-
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_blank(),
+        legend.title = element_blank())
 ```
 
 
@@ -1052,7 +1077,6 @@ rev <- merge(rev,fr.join,by="cid",all.x = T,all.y = F)
 Histogram and density ridges of when subject's cards were reviewed. 
 ```{r plots of time of reviews by subject }
 
- 
 ggplot(rev,aes(x=milli_to_date(id),y=subject,fill = stat(x))) +
 geom_density_ridges_gradient(scale = 1, rel_min_height = 0.0001, gradient_lwd = 1.,panel_scaling=T) +
   coord_cartesian(clip = "off") +
@@ -1063,16 +1087,22 @@ geom_density_ridges_gradient(scale = 1, rel_min_height = 0.0001, gradient_lwd = 
   xlab("Date when reviewed") + ylab("Subject")+
   theme(axis.title.y = element_blank(),axis.title.x = element_blank(),legend.position = 'none')
 
-ggplot(rev)+
-  geom_histogram(aes(x=milli_to_date(id),fill=subject),bins = 45)+
+new_order <- rev %>%
+  group_by(subject) %>%
+  summarize(use=var(hist(id,bin=45,plot=F)$counts)) %>%
+  arrange(-use)
+
+ggplot(rev,aes(x=milli_to_date(id),fill=factor(subject,levels = new_order$subject)))+
+  geom_histogram(bins = 45)+
   xlab("Date") +
+  scale_fill_brewer(palette = "Set1")+
   #ggtitle( "Histogram of reviews colored by subject")+
   scale_x_date(date_breaks="6 months")+ 
   theme(axis.text.x = element_text(angle=30))+
   labs(colour = " ")+
-  theme(axis.title.y = element_blank(),axis.title.x = element_blank())
-
-
+  theme(axis.title.y = element_blank(),
+        axis.title.x = element_blank(),
+        legend.title = element_blank())
 
 ```
 
@@ -1191,7 +1221,6 @@ if(F){
 rm(list=unlist(setdiff(ls(),c("rev","crd","tf_mat","vocabulary.new"))))
 }
 
-saveRDS(options(),"options_from_two.RDS")
 gc()
 save.image(file = 'Step_2_after.RData')
 

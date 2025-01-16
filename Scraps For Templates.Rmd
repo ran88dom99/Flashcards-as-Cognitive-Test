@@ -1,0 +1,259 @@
+---
+title: "Scraps For Templates"
+author: "DG"
+date: "2025-01-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+names(crd)
+#sort(unique(crd$tags.note))
+```
+
+merge crd with template
+
+```{r join in template}
+ # 
+ # from github.com/ankidroid/Anki-Android/wiki/Database-Structure
+ # ord             integer not null,
+ #  -- ordinal : identifies which of the card templates or cloze deletions it corresponds to 
+ #  --   for card templates, valid values are from 0 to num templates - 1
+ #  --   for cloze deletions, valid values are from 0 to max cloze index - 1 (they're 0 indexed despite the first being called `c1`)
+                                                                           
+templates$ever_used <- (templates$ntid) %in% as.numeric(cards$ntid)
+#print(as_tibble(templates[!templates$ever_used,]))
+
+
+#str(crd)
+
+crd$ntidord <- paste(crd$ntid,crd$ord)
+templates$ntidord <- paste(templates$ntid,templates$template_ord)
+ff <- unique(crd$ntid[!(crd$ntidord %in% templates$ntidord)])
+
+stopifnot(
+  all(crd$ntid %in% templates$ntid),
+  all(templates$is_cloze[templates$ntid %in% ff])
+)
+
+crd <- crd[order(crd$cid),]
+indx <- which(!(crd$ntidord %in% templates$ntidord))
+crd_temp <- merge(crd[indx,],templates,all.x=T,all.y = F,
+             by.x = "ntid",by.y="ntid")
+
+a <- dim(crd)
+#dim(templates)
+crd <- merge(crd,templates,all.x=T,all.y = F,
+             by.x = "ntidord",by.y="ntidord")
+
+
+crd_temp <- crd_temp[order(crd_temp$cid),]
+crd <- crd[order(crd$cid),]
+remerge <- names(crd)[which(names(crd) %in% names(templates))[-1]]
+crd[indx,remerge] <- crd_temp[,remerge]
+```
+```{r check join and clean }
+names(crd)[names(crd)=="ntid.x"] <- "ntid"
+
+stopifnot(
+  dim(crd)[1]==a[1],
+  dim(crd)[2]==(a[2] + 9),
+  !any(is.na(crd[,remerge])),
+  all(crd$max.ord.fields>=crd$ord | crd$is_cloze),
+  all(crd$max.ord.fields>=crd$template_ord),
+  all(crd$ever_used),
+  length(unique(crd$ntid)) == length(unique(crd$notetypename)),
+  length(unique(crd$ntid)) == length(unique(paste(crd$ntid,crd$notetypename))),
+  length(unique(crd$cid)) == length(unique(paste(crd$nid,crd$cid))),
+  length(unique(crd$nid)) == length(unique(paste(crd$did,crd$nid))),
+  length(unique(crd$cid)) == length(unique(paste(crd$card.txt,crd$cid))),
+  length(unique(rev$cid)) == length(unique(paste(rev$nid,rev$cid)))
+) 
+
+crd$ntidord<-NULL
+crd$template_ord<-NULL
+crd$max.ord.fields<-NULL
+crd$ever_used<-NULL
+crd$ntid.y<-NULL
+crd$ntid<-NULL
+
+#          !!!!
+#template_name only useful when looking up notes in anki browser but I will keep it
+```
+
+
+
+```{r scrap for which Fields not in html}
+
+# 
+# problem<-which(templates$notetypename=="@Basic - Regex")
+# templates$field_names[nice]
+# norn<-c(unlist(templates$fields_front_extracted[nice]),
+# unlist(templates$fields_back_extracted[nice]))
+# 
+# templates$field_names[nice]
+# 
+# str_extract_all(templates$template_config_front,pattern=regex("(?<=\\{{2}).*?(?=\\})")) 
+# 
+# 
+# a<-unlist(str_split(templates$field_names[nice],pattern= " -- "))
+#   b<-norn
+#   #print(a)
+#   #print(b)
+#   field_names_found<-str_detect(list(b),pattern=(a))
+#   field_names_found<-pmax(field_names_found,a %in% b)>0
+#   if(all(field_names_found)) return(F)
+#   return(a[!field_names_found])
+# 
+
+```
+```{r scrap evidence for using two brackets not one during field extraction}
+# "z spanish sentences deck" 
+# ""                        "2,"
+# 
+# tee<-templates$notetypename=="z spanish sentences deck"
+# templates$template_config[tee]
+# templates$fields_front_extracted[tee]
+# templates$fields_back_extracted[tee]
+# oner <-
+# str_count(templates$template_config,pattern=regex("(?<=\\{{1,2}).*?(?=\\})"))
+# compr <-
+# str_count(templates$template_config,pattern=regex("(?<=\\{{2}).*?(?=\\})"))
+# importt <- oner - compr > 2
+# 
+# xtrr <-
+# str_extract_all(templates$template_config,pattern=regex("(?<=\\{{1,2}).*?(?=\\})"))
+# origo <-
+# str_extract_all(templates$template_config,pattern=regex("(?<=\\{{2}).*?(?=\\})"))
+# 
+# xtrr[importt]
+# origo[importt]
+# templates$template_config[importt]
+# templates$field_names[importt]
+```
+
+```{r scraps for splitting cloze}
+if(F){
+cloze_min <- str_extract_all('Changing a habit requires:\n<ol>\n<li>identifying a {{c1::cue}},</li>\n<li>having a {{c2::plan}}',pattern='\\{\\{c.+?\\}\\}') %>%
+  lapply( FUN= function(x){ 
+                  ut<-nchar(x) 
+                  max(min(ut[ut>1]),0)}) %>%
+  unlist()        
+crd$card.txt.old[1:1000]
+
+
+summary(cloze_min)
+str_detect(crd$card.txt.old,fixed('{{c') )
+
+str_split('Changing a habit -- requires:\n<ol>\n<li>identifying a {{c1::cue}},</li>\n<li>having a {{c2::plan}}',fixed("--")) %>%
+  print() %>%
+  unlist( ) %>%
+  str_split(fixed("{{c")) %>%
+  print() %>%
+  unlist( ) %>%
+   str_split(fixed("::")) %>%
+  print() %>%
+  unlist( ) %>%
+  str_split(fixed("}}")) %>%
+  unlist() %>%
+  print()
+}
+```
+
+```{r scraps more}
+if(F){
+#I know I want to compare the two methods but what is the point of this??
+templates$excess_fields <- apply(templates,1,function(x){
+  nup <- paste(unlist(x$fields_extracted),collapse=" ")
+  nice <- unlist(str_split(x$field_names,pattern= " -- "))
+  ( function(z) str_detect(nup, pattern = z))(nice)
+}  )
+
+print("STOP here")
+templates$temp_fields_unmatched <- apply(templates,1,function(x){
+  temp <- (unlist(x$fields_extracted))
+  fields <- unlist(str_split(x$field_names,pattern= " -- "))
+  print(temp)
+  print(fields)
+  (function(z) str_detect(z, pattern = fields))(temp)
+}  )
+
+
+templates$issue <- apply(templates,1,function(x){
+  !all(x$enough_fields)
+}  )
+
+alist= 1:5
+
+print(
+
+(function(x) x + 2)(alist)
+
+) #3,4,5,6,7
+
+ ( function(z) str_detect("a b j", pattern = z))(c("a","j","c"))
+}
+```
+
+```{r scraps for splitting notice issues}
+if(F){
+  
+  
+templates$field_names[templates$notetypename=='14000']
+templates$fields_extracted[templates$notetypename=='14000']
+templates$template_config[templates$notetypename=='14000']
+templates$template_config_recode[templates$notetypename=='14000']
+
+#\022\xf1\004
+#\022\x99\005
+str_extract_all(templates$template_config,pattern=regex(".{10}\022.{10}")) 
+str_extract_all(templates$template_config,pattern=regex("\004"))
+interest<-str_count(templates$template_config,pattern=regex("\022")) != 1
+?regex()
+templates$notetypename[interest]
+templates$template_name[interest]
+templates$field_names[interest]
+
+templates$template_config[interest]
+
+"\022"
+
+# either first part dublicated or duplicated with{{frontside}}
+# what to do about cloze though?
+
+}
+#View(templates)
+```
+
+```{r scrap cant find cue answer divisor}
+if(F){
+templates$a_q_divisor_simple <- str_detect(templates$template_config ,fixed("<hr")) + str_detect(templates$template_config ,fixed("{cloze")) + str_detect(templates$template_config ,fixed("{{c1"))
+
+summ(templates$a_q_divisor_simple)
+View(templates[templates$a_q_divisor_simple==0,]) 
+View(templates[templates$issue,c("enough_fields","template_config","field_names")]) 
+#is fine {{mask}} image occlusion
+}
+```
+
+```{r scrap 2 cant find cue answer divisor}
+if(F){
+"\n\xce\004{{#Image}}\n<div id=\"io-header\">{{Header}}</div>\n<div id=\"io-wrapper\">\n  <div id=\"io-overlay\">{{Question Mask}}</div>\n  <div id=\"io-original\">{{Image}}</div>\n</div>\n<div id=\"io-footer\">{{Footer}}</div>\n\n<script>\n// Prevent original image from loading before mask\naFade = 50, qFade = 0;\nvar mask = document.querySelector('#io-overlay>img');\nfunction loaded() {\n    var original = document.querySelector('#io-original');\n    original.style.visibility = \"visible\";\n}\nif (mask === null || mask.complete) {\n    loaded();\n} else {\n    mask.addEventListener('load', loaded);\n}\n</script>\n{{/Image}}\n\022\xb1\f{{#Image}}\n<div id=\"io-header\">{{Header}}</div>\n<div id=\"io-wrapper\">\n  <div id=\"io-overlay\">{{Answer Mask}}</div>\n  <div id=\"io-original\">{{Image}}</div>\n</div>\n{{#Footer}}<div id=\"io-footer\">{{Footer}}</div>{{/Footer}}\n<button id=\"io-revl-btn\" onclick=\"toggle();\">Toggle Masks</button>\n<div id=\"io-extra-wrapper\">\n  <div id=\"io-extra\">\n    {{#Remarks}}\n      <div class=\"io-extra-entry\">\n        <div class=\"io-field-descr\">Remarks</div>{{Remarks}}\n      </div>\n    {{/Remarks}}\n    {{#Sources}}\n      <div class=\"io-extra-entry\">\n        <div class=\"io-field-descr\">Sources</div>{{Sources}}\n      </div>\n    {{/Sources}}\n    {{#Extra 1}}\n      <div class=\"io-extra-entry\">\n        <div class=\"io-field-descr\">Extra 1</div>{{Extra 1}}\n      </div>\n    {{/Extra 1}}\n    {{#Extra 2}}\n      <div class=\"io-extra-entry\">\n        <div class=\"io-field-descr\">Extra 2</div>{{Extra 2}}\n      </div>\n    {{/Extra 2}}\n  </div>\n</div>\n\n<script>\n// Toggle answer mask on clicking the image\nvar toggle = function() {\n  var amask = document.getElementById('io-overlay');\n  if (amask.style.display === 'block' || amask.style.display === '')\n    amask.style.display = 'none';\n  else\n    amask.style.display = 'block'\n}\n\n// Prevent original image from loading before mask\naFade = 50, qFade = 0;\nvar mask = document.querySelector('#io-overlay>img');\nfunction loaded() {\n    var original = document.querySelector('#io-original');\n    original.style.visibility = \"visible\";\n}\nif (mask === null || mask.complete) {\n    loaded();\n} else {\n    mask.addEventListener('load', loaded);\n}\n</script>\n{{/Image}}\n"
+#above all imagess
+#MathAdvanced--Math Very Advanced--M-335 LINEAR ALGEBRA--LINEAR S1
+# IO Card
+# <script> </script> there that is the key!
+#and fairly simple card:
+"\n\032<div>{{Explanation}}</div>\022;<div>{{Explanation}}</div>\n<div class=\"code\">{{Code}}</div>" 
+# so just use old plan of first field Q second field A do check that Q is the first field in template too!
+
+unique(crd$dek.nam[crd$a_q_divisor_simple>1]) #default to CLOZE not post answer
+
+
+crd$card.txt[crd$a_q_divisor_simple==0]
+}
+```
+
