@@ -12,13 +12,20 @@ editor_options:
     wrap: 70
 ---
 
+```{=html}
 <style type="text/css">
   body{
   font-size: 13pt;
 }
 </style>
-
-This step is mostly debugging and will not be interesting to anyone who is not analyzing their own data. Please notice the amount of code needed to remove all the bugs in Anki's database and look at the pretty latter plots. If you are running this on your own data you should check the output of each and every code section carefully. Look for label CHANGEME, which for the following 3 notebooks are mostly errors.
+```
+This step is mostly debugging and will not be interesting to anyone
+who is not analyzing their own data but maybe look at the pretty
+latter plots. A lot of the debugging is necessary because I added
+decks in weird ways, Anki is being constantly developed, and I use
+many addons. If you are running this on your own data you should check
+the output of each and every code section carefully. Look for label
+CHANGEME, which for the following notebook is mostly errors.
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -28,9 +35,6 @@ options(max.print=200)
 
 ## LOAD AND CLEAN DATA
 
-A lot of the debugging is necessary because I added decks in weird
-ways, Anki is being constantly developed, and I use many addons.
-
 Load Anki's sqlite database and turn it into several R tables.
 
 ```{r Load Ankis SQlite DB}
@@ -38,7 +42,7 @@ Load Anki's sqlite database and turn it into several R tables.
 
 require(DBI)
 #CHANGEME
-COLLECTION_PATH <- "collection8_10_23.anki2"
+COLLECTION_PATH <- "collection2025-1-15.anki2"
 connection <- dbConnect(RSQLite::SQLite(), dbname=COLLECTION_PATH)
 rev <- dbGetQuery(connection,'SELECT * FROM revlog')
 
@@ -53,7 +57,8 @@ for (i in each.table) {
   al[[which(each.table==i)]]<-eh
   })
 } 
-names(al)
+#names(al)
+lapply(al, dim)
 dbDisconnect(connection)
 {
 print("following tables did not load properly")
@@ -68,17 +73,18 @@ fields<-al$fields
 notetypes<-al$notetypes
 templates<-al$templates
 
+names(note)
+View(al$deck_config)
 ```
- 
-
-
 
 ```{r load tidyverse silently, include=FALSE}
 require(tidyverse, quietly = T)
 require(ggraph, quietly = T)
 require(tidygraph, quietly = T)
 ```
-```{r better str function}
+
+```{r small helper functions}
+#various summaries of a single variable
 summ <- function(inc, by=.05){
   try({
   inc<-as.numeric(inc)
@@ -91,18 +97,21 @@ summ <- function(inc, by=.05){
   })
 }
 
-st <- function(nic) {
-  tbp <- sort(table(nic),decreasing=T)
+#shorter table summary of a single  variable
+st <- function(tbl) {
+  tbp <- sort(table(tbl),decreasing=T)
   print(tbp[1:min(10,length(tbp))])
 }
+
   milli_to_date <- function(mili) as.Date((mili)/(24*60*60*1000), origin = "1970-01-01")
     milli_to_days <- function(mili) round((mili)/(24*60*60*1000),digits=3)
      secs_to_date <- function(mili) as.Date((mili)/(24*60*60), origin = "1970-01-01")
 ```
+
 Basic history plots and info. Maybe reveal bug.
 
 ```{r plot simple use history}
- milli_to_date <- function(mili) as.Date((mili)/(24*60*60*1000), origin = "1970-01-01")
+ #milli_to_date <- function(mili) as.Date((mili)/(24*60*60*1000), origin = "1970-01-01")
 reviews.per.card <- sort(table(rev$cid),decreasing = T)
 hist(reviews.per.card,breaks = 60)
 cards.reviewed.each.month <- milli_to_date(rev$id)
@@ -118,8 +127,9 @@ print(paste("when was first review:",milli_to_date(min(rev$id,na.rm=T))))
 }
 ```
 
+Columns probably for syncing. Removing most. Plot of when cards
+modified.
 
-Columns probably for syncing. Removing most. Plot of when cards modified.
 ```{r investigate columns for mod ification time}
 {
 hist(secs_to_date(cards$mod),breaks = 100)
@@ -159,6 +169,7 @@ notetypes$mtime_secs <- NULL
 ```
 
 remove meaningless variables
+
 ```{r document all columns and remove meaningless ones}
 {
 
@@ -199,8 +210,9 @@ note$csum<- NULL #man idk
 }
 ```
 
-Its recommended to sync your collection before using this notebook. 
- Remove column used for syncing. USN -1 means needs to be pushed.
+Its recommended to sync your collection before using this notebook.
+Remove column used for syncing. USN -1 means needs to be pushed.
+
 ```{r remove column sync}
 {
 
@@ -231,6 +243,7 @@ rev$usn <- NULL
 ```
 
 rename columns
+
 ```{r rename some variables}
 #this part may better belong in 'merge all' block
 names(note)[names(note)=="id"] <- "nid"
@@ -245,7 +258,11 @@ names(dek)[names(dek)=="name"] <- "dek.nam"
 
 ```
 
-Filtered deck ids replaced with original deck ids. As main meaning of 'deck' is similar subject not schedule this is obviously right. Not sure about due though.
+Filtered deck ids replaced with original deck ids. As main meaning of
+'deck' is similar subject not schedule this is obviously right. Not
+sure about due though. Better filtered decks not have cards in them
+when running this notebook i think.
+
 ```{r filtered decks maybe important}
 {
  updd <- cards$odid != 0
@@ -263,7 +280,8 @@ st((cards$odid))
 # summary(cards$did %in% tdid)
 # summary(cards$did %in% todid)
 # cards[cards$due<0,]
-
+# summary(cards$due)
+# summary(cards$odue)
 
 print("cards$odue")
 st((cards$odue)) 
@@ -275,12 +293,12 @@ if(sum(updd)>0) {
 }
 cards$odid<-NULL
 cards$odue<-NULL
-
 }
-
 ```
 
-Cleaning text function.   Clean deck names as well as card text. CHANGEME if bug.
+Cleaning text function. Clean deck names as well as card text.
+CHANGEME if bug.
+
 ```{r clean deck names}
 #travels around this notebook because takes so long
 {
@@ -326,7 +344,6 @@ if(deck.names.redun>0) {
 }
 }
 
-
 if(T){ 
 card_count <- length(unique(note$card.txt))
 
@@ -339,9 +356,9 @@ if(card.text.redun>0) {
   print("This is not terribly important but consider editing the following cards. Shows the importance of using olds when comparing cards")
   note %>% 
     group_by(card.txt) %>%
-    summarize(n_old_txt=length(unique(card.txt.old)),
-              one.card.txt.old=first(card.txt.old),
-              two.card.txt.old=last(card.txt.old)
+    summarize(n_old_txt = length(unique(card.txt.old)),
+              one.card.txt.old = first(card.txt.old),
+              two.card.txt.old = last(card.txt.old)
               ) %>%
     filter(n_old_txt>1) %>%
     arrange(-n_old_txt)
@@ -354,77 +371,24 @@ if(card.text.redun>0) {
 
 ## MERGE many different tables into 2
 
-Clean and join several tables into templates.
-```{r merge many tables into templates}
-{
-names(notetypes)[names(notetypes)=="config"] <- "prettynotes"
-notetypes$prettynotes<-NULL #because raw-to-char can not deal with it
-names(notetypes)[names(notetypes)=="name"] <- "notetypename"
-
-names(templates)[names(templates)=="name"] <- "template_name"
-names(templates)[names(templates)=="config"] <- "template_config"
-names(templates)[names(templates)=="ord"] <- "template_ord"
-typ<-c()
-for(i in templates$template_config) try({typ<-c(typ,(rawToChar(unlist(unlist(i)))))})
-templates$template_config <- typ
-
-templates$is_cloze <- 0 < (str_detect(templates$template_config ,fixed("{cloze")) + str_detect(templates$template_config ,fixed("{{c1")))
-
-stopifnot(all(notetypes$id %in% templates$ntid),
-          all(templates$ntid %in% notetypes$id)
-)
-
-a <- dim(templates)
-#  dim(notetypes)
- templates <- merge(templates,notetypes,all=T,by.x = "ntid",by.y="id")#just adds one colum; notetype name
-stopifnot(
-  dim(templates)[1]==a[1],
-  dim(templates)[2]==(a[2] + 1)
-)  
-
-typ<-c()
-for(i in fields$config) try({typ<-c(typ,(rawToChar(unlist(unlist(i)))))})
-fields$config <- typ
-#fields$config <- NULL
-names(fields)[names(fields)=="config"] <- "config_notes"
-
-to_template <- fields %>%
-  group_by(ntid) %>%
-  summarize(
-    max.ord.fields=max(ord),
-    field_names = paste(name,sep = " -- ", collapse = " -- ")
-  ) %>%
-  ungroup()
-
-stopifnot(all(templates$ntid %in% fields$ntid),
-          all(fields$ntid %in% templates$ntid)
-)
-
-a <- dim(templates)
-#dim(to_template)
-templates <- merge(templates,to_template,all=T,by.x = "ntid",by.y="ntid")
-#adds max ord of fields (count of fields) and the field names
-#later the ordered field names will be used with templates to make Q and A parts of each card
-stopifnot(
-  dim(templates)[1]==a[1],
-  dim(templates)[2]==(a[2] + 2)
-)  
-
-templates$ntid <- as.numeric(templates$ntid)
-#summary(templates$ntid)
-}
-```
-
-
 ```{r note and card ids are not useful}
 hist(milli_to_date(cards$cid),100)
 hist(milli_to_date(note$nid),100)
 ```
 
-All id are the timestamp in miliseconds of objects creation or occurence. Card and note ids are universal based on ankiweb (? i never synced) and so are not meaningful variables. This is good because cid can now be used as purely join key. The two timestamps are very similar. Card is the 'side' of a note, ex. one specific empty spot in a cloze deletion phrase. "The number of new cards you have added" in anki's stats window, uses nid or cid. According to it, I started my collection 12 years ago, which is not even close to true. For determining when something was added to collection I will use DID (deck). When card was reviewed is called id in rev data frame.
+All id are the timestamp in miliseconds of objects creation or
+occurence. Card and note ids are universal based on ankiweb (? i never
+synced) and so are not meaningful variables. This is good because cid
+can now be used as purely join key. The two timestamps are very
+similar. Card is the 'side' of a note, ex. one specific empty spot in
+a cloze deletion phrase. "The number of new cards you have added" in
+anki's stats window, uses nid or cid. According to it, I started my
+collection 12 years ago, which is not even close to true. For
+determining when something was added to collection I will use DID
+(deck). When card was reviewed is called id in rev data frame.
 
-
-Merge all useful info into a single object (sheet). Bug checks too. really two; crd and rev. 
+Merge all useful info into a single object (sheet). Bug checks too.
+really two; crd and rev.
 
 ```{r merge most data into single structure}
 {
@@ -460,8 +424,10 @@ rev<-rev2
 rm(rev2);
 #Note to self: some cards are removed later because of terrible deck id.
 ```
-Anki's own statistics say cards unseen are .244 percent or (56832 - 42990) 13842 / 56832 . It counts notes not cards. See Section TIMESTAMP.
 
+Anki's own statistics say cards unseen are .244 percent or (56832 -
+42990) 13842 / 56832 . It counts notes not cards. See Section
+TIMESTAMP.
 
 Convert out of int64 because R works more reliably with numeric.
 
@@ -492,82 +458,16 @@ crd$ntid <- as.numeric(crd$ntid)
 
 ```
 
-  
-merge crd with template
-```{r join in template}
- # 
- # from github.com/ankidroid/Anki-Android/wiki/Database-Structure
- # ord             integer not null,
- #  -- ordinal : identifies which of the card templates or cloze deletions it corresponds to 
- #  --   for card templates, valid values are from 0 to num templates - 1
- #  --   for cloze deletions, valid values are from 0 to max cloze index - 1 (they're 0 indexed despite the first being called `c1`)
-                                                                           
-templates$ever_used <- (templates$ntid) %in% as.numeric(cards$ntid)
-#print(as_tibble(templates[!templates$ever_used,]))
-
-
-#str(crd)
-
-crd$ntidord <- paste(crd$ntid,crd$ord)
-templates$ntidord <- paste(templates$ntid,templates$template_ord)
-ff <- unique(crd$ntid[!(crd$ntidord %in% templates$ntidord)])
-
-stopifnot(
-  all(crd$ntid %in% templates$ntid),
-  all(templates$is_cloze[templates$ntid %in% ff])
-)
-
-crd <- crd[order(crd$cid),]
-indx <- which(!(crd$ntidord %in% templates$ntidord))
-crd_temp <- merge(crd[indx,],templates,all.x=T,all.y = F,
-             by.x = "ntid",by.y="ntid")
-
-a <- dim(crd)
-#dim(templates)
-crd <- merge(crd,templates,all.x=T,all.y = F,
-             by.x = "ntidord",by.y="ntidord")
-
-
-crd_temp <- crd_temp[order(crd_temp$cid),]
-crd <- crd[order(crd$cid),]
-remerge <- names(crd)[which(names(crd) %in% names(templates))[-1]]
-crd[indx,remerge] <- crd_temp[,remerge]
-```
-
-
-```{r check join and clean }
-names(crd)[names(crd)=="ntid.x"] <- "ntid"
-
-stopifnot(
-  dim(crd)[1]==a[1],
-  dim(crd)[2]==(a[2] + 9),
-  !any(is.na(crd[,remerge])),
-  all(crd$max.ord.fields>=crd$ord | crd$is_cloze),
-  all(crd$max.ord.fields>=crd$template_ord),
-  all(crd$ever_used),
-  length(unique(crd$ntid)) == length(unique(crd$notetypename)),
-  length(unique(crd$ntid)) == length(unique(paste(crd$ntid,crd$notetypename))),
-  length(unique(crd$cid)) == length(unique(paste(crd$nid,crd$cid))),
-  length(unique(crd$nid)) == length(unique(paste(crd$did,crd$nid))),
-  length(unique(crd$cid)) == length(unique(paste(crd$card.txt,crd$cid))),
-  length(unique(rev$cid)) == length(unique(paste(rev$nid,rev$cid)))
-) 
-
-crd$ntidord<-NULL
-crd$template_ord<-NULL
-crd$max.ord.fields<-NULL
-crd$ever_used<-NULL
-crd$ntid.y<-NULL
-crd$ntid<-NULL
-
-#          !!!!
-#template_name only useful when looking up notes in anki browser but I will keep it
-```
 
 
 
 ## CLEAN more
-Later on reps column in crd will not agree with reviews because many reviews will have been deleted for error correction. If u see any deck names just bellow, that means reviews and reps already disagree which is a bug.
+
+Later on reps column in crd will not agree with reviews because many
+reviews will have been deleted for error correction. If u see any deck
+names just bellow, that means reviews and reps already disagree which
+is a bug.
+
 ```{r what is reps really}
 crd$in_rev <- (crd$cid) %in% rev$cid
 if( !all((crd$reps>0) == crd$in_rev)){
@@ -581,8 +481,9 @@ unique(crd$dek.nam[reps.reset])
 }
 ```
 
-Remove rows with nas. 
-In my case these were almost certainly reviews of deleted cards.
+Remove rows with nas. In my case these were almost certainly reviews
+of deleted cards.
+
 ```{r remove rows with nas}
 {
   #require(naniar)
@@ -598,7 +499,6 @@ rev <- rev[!rowrm,]
 }
 ```
 
-
 ```{r remove rows with nas from crd table}
 rowrm <- apply(crd,1,function(x) any(is.na(x)))
 if(sum(rowrm)>1){
@@ -610,8 +510,10 @@ crd <- crd[!rowrm,]
 }
 ```
 
+Find duplicate card text and card ids from Reviews. Up to user to do
+something about it. Anki has duplicates finder but its for power
+users.
 
-Find duplicate card text and card ids from Reviews. Up to user to do something about it. Anki has duplicates finder but its for power users.
 ```{r duplicate card text}
 
 #crd <- crd[order(crd$nid),]
@@ -645,6 +547,7 @@ print((list.of.rev.idd[,c(1)]) )
 ```
 
 Duplicates card text with different note ids and in different decks.
+
 ```{r more duplicate cards}
 
 dup <- crd %>%
@@ -665,7 +568,9 @@ dup <- crd %>%
 #as_tibble(as.data.frame(sort(table(dup$dek.nam),decreasing=T)))
 dup[,c("card.txt","dek.nam","nid.count")]
 ```
+
 Duplicate card text with different note ids but in the same decks.
+
 ```{r what makes duplicate cards}
 
 dup <- crd %>%
@@ -683,7 +588,10 @@ dup <- crd %>%
 dup[,c("card.txt","dek.nam","nid.count")]
 ```
 
-Duplicate decks! if greater than 90% duplicated, recommend deleting one of them anyway. On the other hand making duplicate decks is an quick way to manipulate the Subject detection algorithm.
+Duplicate decks! if greater than 90% duplicated, recommend deleting
+one of them anyway. On the other hand making duplicate decks is an
+quick way to manipulate the Subject detection algorithm.
+
 ```{r Duplicat decks}
  crd %>%
   group_by(card.txt.old) %>%
@@ -700,8 +608,8 @@ Duplicate decks! if greater than 90% duplicated, recommend deleting one of them 
 
 ```
 
-
 Quick check.
+
 ```{r check test}
 rev <- rev[order(rev$id),]
 {
@@ -715,7 +623,9 @@ rev <- rev[order(rev$id),]
 #str(rev)
 }
 ```
+
 Quick check of card table.
+
 ```{r quick check of card table}
 {
 print("following regards card data table")
@@ -727,10 +637,7 @@ print(paste("dimensions of card object",paste(dim(crd),collapse = " ")))
 }
 ```
 
-
-
-
-## TIMESTAMP MISSALIGNMENT 
+## TIMESTAMP MISSALIGNMENT
 
 ```{r reviews and cards per deck}
 #reviews and cards per deck into Reviews 
@@ -741,6 +648,7 @@ rev <- rev %>%
   arrange(id)%>%
   ungroup()
 ```
+
 Set to about median ids that are way too early to be timestamps.
 
 ```{r fix non timestamp ids}
@@ -783,7 +691,6 @@ if(any(crd$did<10000)){
 }
 }
 ```
-
 
 ```{r fix non timestamp ids continued}
 if(any(crd$nid<10000)){
@@ -848,6 +755,7 @@ if(any(crd$cid<10000)){
 
 
 ```
+
 ```{r quickcheck}
 {
   print(paste0("count of IDs too low to be timestamps in reveiws. rev ", sum(rev$id<10000)," card ", sum(rev$cid<10000), " note ",sum(rev$nid<10000), " deck ", sum(rev$did<10000)))
@@ -865,13 +773,22 @@ if(sum(rev$time.missalign)>0) print(paste("number reviews with deck created afte
 }
 ```
 
+In my database most reviews before deck creation were caused by an
+Anki upgrade changed them. TODO (likely problematic) They should be
+fixed by undoing the change but currently just deleted. Also some of
+the decks were installed in a weird way and kept the makers review
+history. These reviews will be deleted. One case was probably caused
+by editing a card and should be ignored. Could moving cards between
+decks cause this problem too?
 
-In my database most reviews before deck creation were caused by an Anki upgrade changed them. TODO (likely problematic) They should be fixed by undoing the change but currently just deleted. Also some of the decks were installed in a weird way and kept the makers review history. These reviews will be deleted. One case was probably caused by editing a card and should be ignored. Could moving cards between decks cause this problem too?
+Following code removes reviews made before the deck timestamp and
+reviews made before a certain date. Deck ids will be increased.
 
-Following code removes reviews made before the deck timestamp and reviews made
-before a certain date. Deck ids will be increased.
-
-CHANGEME U may want to change which of the 4 removal methods activate by altering the Ts and Fs. Remove specific decks. Remove reviews before their deck's timestamp. Remove reviews before a certain time set in 'first_time_used_anki'. Change deck id to after anki is used first time. 
+CHANGEME U may want to change which of the 4 removal methods activate
+by altering the Ts and Fs. Remove specific decks. Remove reviews
+before their deck's timestamp. Remove reviews before a certain time
+set in 'first_time_used_anki'. Change deck id to after anki is used
+first time.
 
 ```{r find and remove problem reviews and decks}
 {
@@ -935,8 +852,8 @@ if(T){
 crd$in_rev <- (crd$cid) %in% rev$cid
 ```
 
-
 Review id timestamps after trimming
+
 ```{r review id timestamps after trimming}
 {
 rev <- rev[order(rev$id),]
@@ -976,10 +893,7 @@ print(revie.deck.mis[order(revie.deck.mis$first.review),])
 }
 ```
 
-
-
 ## HEIRARCHY AND ACCUMULATION OF COLLECTION
-
 
 ```{r new plot of cards each month}
 {
@@ -1010,9 +924,6 @@ print(paste("number of reviews before notes", sum(reved$nid >= reved$min)))
 }
 }
 ```
-
-
-
 
 ```{r accumulation of cards in time}
 rev<-rev[order(rev$id),]
@@ -1055,7 +966,9 @@ The TRUE is reviews of cards already reviewed and FALSE is reviews of
 new notes. A two sided note will make 2 cards like hand -\> mano and
 mano -\> hand. Anki already has similar plot.
 
-When were cards added that have ever been reviewed? Good and bad decisions? INTERESTING
+When were cards added that have ever been reviewed? Good and bad
+decisions? INTERESTING
+
 ```{r good decisions when adding decks}
 qdf <- data.frame(dion = c(nts_fg, nts_gd),
                   seen=c(rep(F,times=length(nts_fg)),rep(T,times=length(nts_gd))))
@@ -1069,11 +982,9 @@ ggplot(data=qdf)+
 
 ```
 
-
-SELF REVIEW  In first 2 months additions were well considered enough but then got obsessed with additions. Somewhere around 2021-10 this stopped and additions became better planned again.
-
-
-
+SELF REVIEW In first 2 months additions were well considered enough
+but then got obsessed with additions. Somewhere around 2021-10 this
+stopped and additions became better planned again.
 
 ```{r count cards in deck; simple deck name; add var to rev}
 
@@ -1131,10 +1042,11 @@ treemap(opp, index="simplest.name", vSize="Cards_in_deck", vColor="percent_revie
 
 ```
 
+TODO animate over time events of great addition?
 
-TODO animate over time events of great addition? 
-
-Separate folder path into each folder name. First rev then crd. Check if one folder name appears in another hierarchy level. Up to user to fix.
+Separate folder path into each folder name. First rev then crd. Check
+if one folder name appears in another hierarchy level. Up to user to
+fix.
 
 ```{r separate tree}
 dek_name_to_heir <- function(var.to.split){
@@ -1164,11 +1076,13 @@ for(itr in 1:(max_lv-1)){#itr<-1
   }}
 
 dek_heir_unfurled <- dek_name_to_heir(crd$dek.nam)
-#print(dek_heir_unfurled)
+print(head(dek_heir_unfurled))
+print(tail(dek_heir_unfurled))
 crd <- cbind(crd,dek_heir_unfurled)
 
 
 ```
+
 ```{r check for dupli names}
 for(itr in 1:(max_lv-1)){#itr<-1
   for(i in (max_lv-itr):1){#i<-1
@@ -1182,8 +1096,6 @@ for(itr in 1:(max_lv-1)){#itr<-1
   }}
 
 ```
-
-
 
 ```{r deck folder heirarchy}
 {
@@ -1218,10 +1130,12 @@ ggraph(g,layout=yout) +
 }
 ```
 
-Plot of deck folder hierarchy above. 
+Plot of deck folder hierarchy above. Deck must have at least one review to appear here.
 
+Folders with cards as well as decks. Maybe make the bellow mentioned
+decks not hold both cards and decks by moving the decks? (if move
+cards may cause problems!)
 
-Folders with cards as well as decks. Maybe make the bellow mentioned decks not hold both cards and decks by moving the decks? (if move cards may cause problems!)
 ```{r any folders with cards as well as decks?}
 #um find every unique full deck name then check if it is part of any others and then that full deck name will be one with 
 dek.evey <- sort(unique(crd$dek.nam))
@@ -1243,9 +1157,10 @@ crd$notendfolder <- crd$dek.nam %in% nonlastset
 crd %>% filter(notendfolder) %>% group_by(dek.nam) %>% summarise(count= n())
  
 ```
- 
+not absolutely necessary but maybe good idea to fix (move cards, rename deck, create new heirarchy fork)
 
-Check that duplicate columns in crd and rev have not diverged. 
+Check that duplicate columns in crd and rev have not diverged.
+
 ```{r check crd and rev redundancies are identical}
 {
   names(crd)[names(crd)=="type"] <- "type_card"
@@ -1275,20 +1190,250 @@ comparedf(crd_compare,tocompare)
 }
 ```
 
-Remove most objects from memory and save the rest into files.
+## Templates to know what user sees before and after answering
+
+Clean and join several tables into templates. notetypes & fields
+
+```{r templates cleaned}
+
+names(notetypes)[names(notetypes)=="config"] <- "prettynotes"
+notetypes$prettynotes<-NULL #because raw-to-char can not deal with it
+names(notetypes)[names(notetypes)=="name"] <- "notetypename"
+
+names(templates)[names(templates)=="name"] <- "template_name"
+names(templates)[names(templates)=="config"] <- "template_config"
+names(templates)[names(templates)=="ord"] <- "template_ord"
+
+
+```
+
+```{r templates notetypes merged in}
+stopifnot(
+  all(sort(unique(fields$ntid))==sort(unique(fields$ntid))),
+          all(notetypes$id %in% templates$ntid),
+          all(templates$ntid %in% notetypes$id)
+)
+a <- dim(templates)
+names(notetypes)
+ templates <- merge(templates,notetypes,all=T,by.x = "ntid",by.y="id")#just adds one colum; notetype name
+stopifnot(
+  dim(templates)[1]==a[1],
+  dim(templates)[2]==(a[2] + 1)
+)
+names(templates)
+
+#summary(templates$ntid)
+
+```
+
+```{r templates & fields config blob into text}
+
+typ<-c()
+for(i in templates$template_config) try({typ<-c(typ,(rawToChar(unlist(unlist(i)))))})
+templates$template_config <- typ
+
+templates$template_config_recode <- stringi::stri_enc_toutf8(templates$template_config,is_unknown_8bit=TRUE,validate=T)
+
+typ<-c()
+for(i in fields$config){
+  p=F
+  try({
+    typ<-c(typ,(rawToChar(unlist(unlist(i)))));
+  p=T
+  })
+  if(!p) typ<-c(typ,"")
+} 
+fields$config <- typ
+#fields$config <- NULL
+names(fields)[names(fields)=="config"] <- "config_fields"
+#print(sort(unique(fields$config_fields)))
+
+templates$template_nchar <- nchar((templates$template_config_recode))
+templates$is_cloze <- 0 < (str_detect(templates$template_config ,fixed("{cloze")) + str_detect(templates$template_config ,fixed("{{c1")))
+summary(templates$is_cloze)
+
+print("above the count of cloze deletion note types
+      is it really ok to just fill in fields that failed to be parsed as _ 
+      field config does not seeem to matter,
+      template_config rawtochar is better than stringi stri_enc_toutf8")
+diff_check=data.frame(((templates$template_config)),
+((templates$template_config_recode)))
+diff_check$identical <- diff_check[,1]== diff_check[,2]
+
+# print(
+#   diff_check[!diff_check$identical,]
+# )
+```
+
+```{r templates, fields file aggregated & merged in}
+
+stopifnot(all(sort(unique(fields$ntid))==sort(unique(fields$ntid))),
+          all(templates$ntid %in% fields$ntid),
+          all(fields$ntid %in% templates$ntid)
+)
+
+to_template <- fields %>%
+  group_by(ntid) %>%
+  summarize(
+    max.ord.fields=max(ord),
+    field_names = paste(name,sep = " -- ", collapse = " -- ")
+  ) %>%
+  ungroup()
+
+a <- dim(templates)
+#dim(to_template)
+templates <- merge(templates,to_template,all=T,by.x = "ntid",by.y="ntid")
+#adds max ord of fields (count of fields) and the field names
+#later the ordered field names will be used with templates to make Q and A parts of each card
+stopifnot(
+  dim(templates)[1]==a[1],
+  dim(templates)[2]==(a[2] + 2)
+)  
+templates$ntid <- as.numeric(templates$ntid)
+names(templates)
+```
+
+Anki does not correctly describe what will and wont be part of front
+and back of cards. sometimes no back so front is reused as back. sometimes
+split more than once though in the one case I have seen there
+is no real second back side just a symbol.
+
+```{r template config html split between front and after answer}
+tsl<-str_split(templates$template_config,pattern=fixed("\022"))
+
+templates$template_config_front <- sapply(tsl, function(x) {
+  x[1]
+})
+
+templates$template_config_back  <- sapply(tsl, function(x) {
+  if(length(x)<2) return(x[1])
+  if(length(x)==2) return(x[2])
+  return(paste(x[2:3],collapse=""))
+})
+
+#tsl[[176]]
+#templates$template_config_back[176]
+```
+
+
+```{r extract fields from template config html}
+require(stringr)
+
+#same as below but for entire html rather than split
+# templates$fields_extracted <-
+# str_extract_all(templates$template_config,pattern=regex("(?<=\\{{1,2}).*?(?=\\})")) 
+# templates$fields_extracted <-
+# apply(templates,1,function(x){
+#   nup <- unlist(x$fields_extracted)
+#   str_remove_all(nup,fixed("{"))
+# }  )
+
+templates$fields_front_extracted <-
+str_extract_all(templates$template_config_front,pattern=regex("(?<=\\{{2}).*?(?=\\})")) 
+templates$fields_front_extracted <-
+apply(templates,1,function(x){
+  nup <- unlist(x$fields_front_extracted)
+  str_remove_all(nup,fixed("{"))
+}  )
+
+templates$fields_back_extracted <-
+str_extract_all(templates$template_config_back,pattern=regex("(?<=\\{{2}).*?(?=\\})")) 
+templates$fields_back_extracted <-
+apply(templates,1,function(x){
+  nup <- unlist(x$fields_back_extracted)
+  str_remove_all(nup,fixed("{"))
+}  )
+```
+Which fields are missing from back - answer side of card but are available on front
+```{r is back ever missing info from front?}
+#any(str_detect(templates$fields_back_extracted[[2]],fixed("FrontSide")))
+templates$missing_front <- sapply(templates$fields_back_extracted , function(x) {
+  !any(str_detect(x,fixed("FrontSide")))
+})
+
+# x<-templates[6,]
+# a<-unlist(x$fields_front_extracted)
+# b<-unlist(x$fields_back_extracted)
+templates$missing_front <- apply(templates,1,simplify = T,function(x){
+  if(!x$missing_front) return(F)
+  a<-(x$fields_front_extracted)
+  b<-x$fields_back_extracted
+  front_fields_found<-str_detect(list(b),pattern=(a))
+  front_fields_found<-pmax(front_fields_found,a %in% b)>0
+  if(all(front_fields_found)) return(F)
+  return(a[!front_fields_found])
+})
+
+templates$missing_front_count<-unlist(lapply(templates$missing_front, length))
+templates$missing_front_count[templates$missing_front=="FALSE"]<-0
+
+#View(templates[order((templates$missing_front_count)),])
+
+#see all the unmatched field names
+if(F){ 
+tre<-templates$missing_front_count>0
+apply(templates[tre,],1,function(x){
+print(x$notetypename)
+print(x$missing_front)
+print("                            ")
+print(x$fields_front_extracted)
+print(x$fields_back_extracted)
+print("------------------------------")
+})
+}
+summary(templates$missing_front_count)
+```
+
+not all formal fields are in template config html and some are missed. this section catalogs those
+```{r which Fields not in html}
+templates$field_names_unmatched <- apply(templates,1,simplify = T,function(x){
+  a<-unlist(str_split(x$field_names,pattern= " -- "))
+  b<-c(x$fields_back_extracted,x$fields_front_extracted)
+  #print(a)
+  #print(b)
+  field_names_found<-str_detect(list(b),pattern=(a))
+  field_names_found<-pmax(field_names_found,a %in% b)>0
+  if(all(field_names_found)) return(F)
+  return(a[!field_names_found])
+})
+
+templates$field_names_unmatched_count<-unlist(lapply(templates$field_names_unmatched, length))
+templates$field_names_unmatched_count[templates$field_names_unmatched=="FALSE"]<-0
+
+#View(templates[order((templates$field_names_unmatched_count)),])
+
+#see all the unmatched field names
+if(F){ 
+tre<-templates$field_names_unmatched_count>0
+apply(templates[tre,],1,function(x){
+print(x$notetypename)
+print(x$field_names_unmatched)
+print("                            ")
+print(x$fields_front_extracted)
+print(x$fields_back_extracted)
+print("------------------------------")
+})
+}
+summary(templates$field_names_unmatched_count)
+```
+
+
+
+## Remove most objects from memory and save the rest into files.
+
+
 ```{r delete remove objects for cleanliness}
 saveRDS(rev,"rev.RDS")
 saveRDS(crd,"crd.RDS")
+saveRDS(templates,"templates.RDS")
 if(T){
 #rm(cards)
 #rm(note)
 #rm(crd)
 #rm(dek)
 
-rm(list=unlist(setdiff(ls(),c("rev","crd"))))
+rm(list=unlist(setdiff(ls(),c("rev","crd","templates"))))
 }
 gc()
 save.image(file = 'Step_1_after.RData')
 ```
-
-
