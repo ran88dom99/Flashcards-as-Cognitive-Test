@@ -1,6 +1,8 @@
 Flash cards are cards with question on one side and answers on opposite. Exist several computer apps that automate [spaced repetition]( www.gwern.net/Spaced-repetition) for memorization and have recorded alot of data. Humans really need more cognitive tests for their own health. I expected electronic flashcard data to be useful as a cognitive test so I started a project to analyze that data. Turns out the project teaches users about learning and allows them to experiment with and optimize their own learning process. In addition, the project encourages learning by illustrating success in detail, similar to gamification. 
 
 A more indepth discussion of goals and why Anki works as a test of cognitive health is on [Open Humans wiki](wiki.openhumans.org/wiki/Flash_Cards_as_Cognitive_Test.)
+
+First [example of output](https://rpubs.com/rain8/1100036).
  
 
 ## How to use these notebooks 
